@@ -1,3 +1,4 @@
+use owo_colors::OwoColorize;
 use petri::{Cell, Dish, CHUNK_SIZE};
 
 fn main() {
@@ -30,7 +31,7 @@ fn render_pixel_pair(dish: &Dish, x: usize, y: usize) {
 		(true, false) => "▀",
 		(true, true) => "█",
 	};
-	print!("{}", char);
+	print!("{}", char.fg_rgb::<255, 147, 219>());
 }
 
 pub fn wait_for_input() {

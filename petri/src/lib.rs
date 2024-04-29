@@ -81,7 +81,7 @@ impl Dish {
 						height: 2,
 						contents: vec![
 							Some(Cell::WHITE),
-							Some(Cell::EMPTY),
+							None,
 							Some(Cell::WHITE),
 							Some(Cell::EMPTY),
 						],
@@ -91,7 +91,7 @@ impl Dish {
 						height: 2,
 						contents: vec![
 							Some(Cell::EMPTY),
-							Some(Cell::EMPTY),
+							None,
 							Some(Cell::WHITE),
 							Some(Cell::WHITE),
 						],
@@ -102,7 +102,7 @@ impl Dish {
 						width: 2,
 						height: 2,
 						contents: vec![
-							Some(Cell::EMPTY),
+							None,
 							Some(Cell::WHITE),
 							Some(Cell::EMPTY),
 							Some(Cell::WHITE),
@@ -112,7 +112,7 @@ impl Dish {
 						width: 2,
 						height: 2,
 						contents: vec![
-							Some(Cell::EMPTY),
+							None,
 							Some(Cell::EMPTY),
 							Some(Cell::WHITE),
 							Some(Cell::WHITE),
@@ -195,7 +195,6 @@ impl RulePattern {
 		if x >= self.width || y >= self.height {
 			None
 		} else {
-			// dbg!(x, y);
 			self.contents[x + self.width * y].clone()
 		}
 	}

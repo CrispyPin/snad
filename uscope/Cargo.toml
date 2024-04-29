@@ -8,3 +8,4 @@ edition = "2021"
 [dependencies]
 petri = { path = "../petri" }
 bevy = { version = "0.13", features = ["dynamic_linking"] }
+owo-colors = "4.0.0"
