@@ -1,5 +1,5 @@
 use eframe::{
-	egui::{CentralPanel, Color32, Painter, Rect, SidePanel, Ui, Vec2},
+	egui::{CentralPanel, Color32, Painter, Rect, Sense, SidePanel, Ui, Vec2},
 	NativeOptions,
 };
 use petri::{Chunk, Dish, Rule, CHUNK_SIZE};
@@ -92,15 +92,23 @@ fn rule_editor(ui: &mut Ui, rule: &mut Rule, cells: &[CellData]) {
 				bounds.min + Vec2::from((x as f32, y as f32)) * CSIZE,
 				Vec2::splat(CSIZE),
 			);
-			if let Some(cell) = rule.from.get(x, y) {
+			if let Some(cell) = rule.from.get_mut(x, y) {
 				let color = cells[cell.id()].color;
 				ui.painter().rect(rect, 2., color, OUTLINE);
+				let a = ui.allocate_rect(rect, Sense::click());
+				if a.clicked() {
+					cell.0 = (cell.0 + 1) % cells.len() as u16;
+				}
 			}
 
-			if let Some(cell) = rule.to.get(x, y) {
+			if let Some(cell) = rule.to.get_mut(x, y) {
 				let rect = rect.translate(Vec2::X * (patt_width as f32 + 1.) * CSIZE);
 				let color = cells[cell.id()].color;
 				ui.painter().rect(rect, 2., color, OUTLINE);
+				let a = ui.allocate_rect(rect, Sense::click());
+				if a.clicked() {
+					cell.0 = (cell.0 + 1) % cells.len() as u16;
+				}
 			}
 		}
 	}

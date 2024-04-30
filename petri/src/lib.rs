@@ -3,7 +3,7 @@ use rand::prelude::*;
 pub const CHUNK_SIZE: usize = 32;
 
 #[derive(Default, Debug, PartialEq, Clone, Copy)]
-pub struct Cell(u16);
+pub struct Cell(pub u16);
 
 #[derive(Debug)]
 pub struct Dish {
@@ -169,6 +169,14 @@ impl RulePattern {
 			None
 		} else {
 			self.contents[x + self.width * y].clone()
+		}
+	}
+
+	pub fn get_mut(&mut self, x: usize, y: usize) -> Option<&mut Cell> {
+		if x >= self.width || y >= self.height {
+			None
+		} else {
+			self.contents[x + self.width * y].as_mut()
 		}
 	}
 
