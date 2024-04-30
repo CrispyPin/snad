@@ -3,7 +3,7 @@ use rand::prelude::*;
 pub const CHUNK_SIZE: usize = 32;
 
 #[derive(Debug, Default, PartialEq, Clone)]
-pub struct Cell(u8, u8, u8);
+pub struct Cell(pub u8, pub u8, pub u8);
 
 #[derive(Debug)]
 pub struct Pos2(i8, i8);
@@ -42,14 +42,14 @@ impl Chunk {
 		for col in self.contents.iter_mut() {
 			for cell in col.iter_mut() {
 				if random::<u8>() % 4 == 0 {
-					*cell = Cell::WHITE;
+					*cell = Cell::PINK;
 				}
 			}
 		}
 		self
 	}
 
-	fn get_cell(&self, x: usize, y: usize) -> Cell {
+	pub fn get_cell(&self, x: usize, y: usize) -> Cell {
 		self.contents[x][y].clone()
 	}
 
@@ -67,56 +67,36 @@ impl Dish {
 					from: RulePattern {
 						width: 1,
 						height: 2,
-						contents: vec![Some(Cell::WHITE), Some(Cell::EMPTY)],
+						contents: vec![Some(Cell::PINK), Some(Cell::EMPTY)],
 					},
 					to: RulePattern {
 						width: 1,
 						height: 2,
-						contents: vec![Some(Cell::EMPTY), Some(Cell::WHITE)],
+						contents: vec![Some(Cell::EMPTY), Some(Cell::PINK)],
 					},
 				},
 				Rule {
 					from: RulePattern {
 						width: 2,
 						height: 2,
-						contents: vec![
-							Some(Cell::WHITE),
-							None,
-							Some(Cell::WHITE),
-							Some(Cell::EMPTY),
-						],
+						contents: vec![Some(Cell::PINK), None, Some(Cell::PINK), Some(Cell::EMPTY)],
 					},
 					to: RulePattern {
 						width: 2,
 						height: 2,
-						contents: vec![
-							Some(Cell::EMPTY),
-							None,
-							Some(Cell::WHITE),
-							Some(Cell::WHITE),
-						],
+						contents: vec![Some(Cell::EMPTY), None, Some(Cell::PINK), Some(Cell::PINK)],
 					},
 				},
 				Rule {
 					from: RulePattern {
 						width: 2,
 						height: 2,
-						contents: vec![
-							None,
-							Some(Cell::WHITE),
-							Some(Cell::EMPTY),
-							Some(Cell::WHITE),
-						],
+						contents: vec![None, Some(Cell::PINK), Some(Cell::EMPTY), Some(Cell::PINK)],
 					},
 					to: RulePattern {
 						width: 2,
 						height: 2,
-						contents: vec![
-							None,
-							Some(Cell::EMPTY),
-							Some(Cell::WHITE),
-							Some(Cell::WHITE),
-						],
+						contents: vec![None, Some(Cell::EMPTY), Some(Cell::PINK), Some(Cell::PINK)],
 					},
 				},
 			],
@@ -181,6 +161,7 @@ impl Dish {
 impl Cell {
 	pub const EMPTY: Self = Self(0, 0, 0);
 	pub const WHITE: Self = Self(255, 255, 255);
+	pub const PINK: Self = Self(255, 147, 219);
 }
 
 #[derive(Debug)]
@@ -191,11 +172,19 @@ pub struct RulePattern {
 }
 
 impl RulePattern {
-	fn get(&self, x: usize, y: usize) -> Option<Cell> {
+	pub fn get(&self, x: usize, y: usize) -> Option<Cell> {
 		if x >= self.width || y >= self.height {
 			None
 		} else {
 			self.contents[x + self.width * y].clone()
 		}
+	}
+
+	pub fn height(&self) -> usize {
+		self.height
+	}
+
+	pub fn width(&self) -> usize {
+		self.width
 	}
 }
