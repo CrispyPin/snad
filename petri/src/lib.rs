@@ -2,11 +2,8 @@ use rand::prelude::*;
 
 pub const CHUNK_SIZE: usize = 32;
 
-#[derive(Debug, Default, PartialEq, Clone)]
-pub struct Cell(pub u8, pub u8, pub u8);
-
-#[derive(Debug)]
-pub struct Pos2(i8, i8);
+#[derive(Default, Debug, PartialEq, Clone, Copy)]
+pub struct Cell(u16);
 
 #[derive(Debug)]
 pub struct Dish {
@@ -42,7 +39,7 @@ impl Chunk {
 		for col in self.contents.iter_mut() {
 			for cell in col.iter_mut() {
 				if random::<u8>() % 4 == 0 {
-					*cell = Cell::PINK;
+					*cell = Cell(1);
 				}
 			}
 		}
@@ -62,41 +59,42 @@ impl Dish {
 	pub fn new() -> Self {
 		Self {
 			chunk: Chunk::new().fill_random(),
+
 			rules: vec![
 				Rule {
 					from: RulePattern {
 						width: 1,
 						height: 2,
-						contents: vec![Some(Cell::PINK), Some(Cell::EMPTY)],
+						contents: vec![Some(Cell(1)), Some(Cell(0))],
 					},
 					to: RulePattern {
 						width: 1,
 						height: 2,
-						contents: vec![Some(Cell::EMPTY), Some(Cell::PINK)],
+						contents: vec![Some(Cell(0)), Some(Cell(1))],
 					},
 				},
 				Rule {
 					from: RulePattern {
 						width: 2,
 						height: 2,
-						contents: vec![Some(Cell::PINK), None, Some(Cell::PINK), Some(Cell::EMPTY)],
+						contents: vec![Some(Cell(1)), None, Some(Cell(1)), Some(Cell(0))],
 					},
 					to: RulePattern {
 						width: 2,
 						height: 2,
-						contents: vec![Some(Cell::EMPTY), None, Some(Cell::PINK), Some(Cell::PINK)],
+						contents: vec![Some(Cell(0)), None, Some(Cell(1)), Some(Cell(1))],
 					},
 				},
 				Rule {
 					from: RulePattern {
 						width: 2,
 						height: 2,
-						contents: vec![None, Some(Cell::PINK), Some(Cell::EMPTY), Some(Cell::PINK)],
+						contents: vec![None, Some(Cell(1)), Some(Cell(0)), Some(Cell(1))],
 					},
 					to: RulePattern {
 						width: 2,
 						height: 2,
-						contents: vec![None, Some(Cell::EMPTY), Some(Cell::PINK), Some(Cell::PINK)],
+						contents: vec![None, Some(Cell(0)), Some(Cell(1)), Some(Cell(1))],
 					},
 				},
 			],
@@ -158,12 +156,6 @@ impl Dish {
 	}
 }
 
-impl Cell {
-	pub const EMPTY: Self = Self(0, 0, 0);
-	pub const WHITE: Self = Self(255, 255, 255);
-	pub const PINK: Self = Self(255, 147, 219);
-}
-
 #[derive(Debug)]
 pub struct RulePattern {
 	width: usize,
@@ -186,5 +178,12 @@ impl RulePattern {
 
 	pub fn width(&self) -> usize {
 		self.width
+	}
+}
+
+impl Cell {
+	pub const EMPTY: Self = Cell(0);
+	pub fn id(&self) -> usize {
+		self.0 as usize
 	}
 }
