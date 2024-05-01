@@ -1,5 +1,5 @@
 use eframe::{
-	egui::{CentralPanel, Color32, Painter, Pos2, Rect, Sense, SidePanel, Ui, Vec2},
+	egui::{CentralPanel, Color32, Painter, Pos2, Rect, Sense, SidePanel, Slider, Ui, Vec2},
 	NativeOptions,
 };
 use petri::{Cell, Chunk, Dish, Rule, RulePattern, CHUNK_SIZE};
@@ -16,6 +16,8 @@ fn main() {
 #[derive(Debug)]
 struct UScope {
 	dish: Dish,
+	brush: Cell,
+	speed: usize,
 	celltypes: Vec<CellData>,
 }
 
@@ -29,6 +31,8 @@ impl UScope {
 	fn new(_cc: &eframe::CreationContext<'_>) -> Self {
 		Self {
 			dish: Dish::new(),
+			speed: 100,
+			brush: Cell(1),
 			celltypes: vec![
 				CellData::new("air", 0, 0, 0),
 				CellData::new("pink_sand", 255, 147, 219),
@@ -40,14 +44,17 @@ impl UScope {
 impl eframe::App for UScope {
 	fn update(&mut self, ctx: &eframe::egui::Context, _frame: &mut eframe::Frame) {
 		ctx.request_repaint();
-		for _ in 0..100 {
+		for _ in 0..self.speed {
 			self.dish.fire_blindly();
 		}
 		SidePanel::left("left_panel").show(ctx, |ui| {
+			ui.heading("Simulation");
+			ui.add(Slider::new(&mut self.speed, 0..=5000));
 			ui.heading("Cells");
-			for cell in &mut self.celltypes {
+			for (i, cell) in self.celltypes.iter_mut().enumerate() {
 				ui.horizontal(|ui| {
 					ui.set_width(100.);
+					ui.radio_value(&mut self.brush.0, i as u16, "");
 					ui.text_edit_singleline(&mut cell.name);
 					ui.color_edit_button_srgba(&mut cell.color);
 				});
@@ -61,18 +68,26 @@ impl eframe::App for UScope {
 			let bounds = ui.available_rect_before_wrap();
 			let painter = ui.painter_at(bounds);
 			paint_chunk(painter, &self.dish.chunk, &self.celltypes);
+
+			let rect = ui.allocate_rect(bounds, Sense::click_and_drag());
+			if let Some(pos) = rect.interact_pointer_pos() {
+				let p = ((pos - bounds.min) / GRID_SIZE).floor();
+				let x = p.x as usize;
+				let y = p.y as usize;
+				self.dish.set_cell(x, y, self.brush);
+			}
 		});
 	}
 }
 
+const GRID_SIZE: f32 = 16.;
 fn paint_chunk(painter: Painter, chunk: &Chunk, cells: &[CellData]) {
 	let bounds = painter.clip_rect();
-	let size = 16.;
 	for x in 0..CHUNK_SIZE {
 		for y in 0..CHUNK_SIZE {
 			let cell = &chunk.get_cell(x, y);
-			let corner = bounds.min + (Vec2::from((x as f32, y as f32)) * size);
-			let rect = Rect::from_min_size(corner, Vec2::splat(size));
+			let corner = bounds.min + (Vec2::from((x as f32, y as f32)) * GRID_SIZE);
+			let rect = Rect::from_min_size(corner, Vec2::splat(GRID_SIZE));
 			let color = cells[cell.id()].color;
 			painter.rect(rect, 0., color, (1., Color32::GRAY));
 		}
