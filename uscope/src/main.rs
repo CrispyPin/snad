@@ -63,6 +63,9 @@ impl eframe::App for UScope {
 			for rule in &mut self.dish.rules {
 				rule_editor(ui, rule, &self.celltypes);
 			}
+			if ui.button("add rule").clicked() {
+				self.dish.rules.push(Rule::new());
+			}
 		});
 		CentralPanel::default().show(ctx, |ui| {
 			let bounds = ui.available_rect_before_wrap();
@@ -97,19 +100,73 @@ fn paint_chunk(painter: Painter, chunk: &Chunk, cells: &[CellData]) {
 const CSIZE: f32 = 24.;
 const OUTLINE: (f32, Color32) = (1., Color32::GRAY);
 fn rule_editor(ui: &mut Ui, rule: &mut Rule, cells: &[CellData]) {
-	let patt_height = rule.from.height();
-	let patt_width = rule.from.height();
+	let cells_y = rule.from.height();
+	let cells_x = rule.from.width();
+	let margin = 8.;
+	let patt_width = CSIZE * cells_x as f32;
+	let patt_height = CSIZE * cells_y as f32;
 
 	let (_, bounds) = ui.allocate_space(Vec2::new(
-		CSIZE * (patt_width * 2 + 1) as f32,
-		CSIZE * patt_height as f32,
+		patt_width * 2. + margin * 4. + CSIZE,
+		patt_height + margin * 2.,
 	));
-	for x in 0..patt_width {
-		for y in 0..patt_height {
-			rule_cell_edit(ui, bounds.min, &mut rule.from, x, y, cells);
-			let offset = Vec2::X * (patt_width as f32 + 1.) * CSIZE;
-			rule_cell_edit(ui, bounds.min + offset, &mut rule.to, x, y, cells);
+
+	let from_cells_rect = Rect::from_min_size(
+		bounds.min + Vec2::splat(margin),
+		Vec2::new(patt_width, patt_height),
+	);
+	let to_cells_rect = Rect::from_min_size(
+		bounds.min + Vec2::splat(margin) + Vec2::X * (patt_width + margin * 2. + CSIZE),
+		Vec2::new(patt_width, patt_height),
+	);
+
+	for x in 0..cells_x {
+		for y in 0..cells_y {
+			rule_cell_edit(ui, from_cells_rect.min, &mut rule.from, x, y, cells);
+			rule_cell_edit(ui, to_cells_rect.min, &mut rule.to, x, y, cells);
 		}
+	}
+	let mut resize_box = |x, y, w, h| {
+		let rect_a = Rect::from_min_size(Pos2::new(x, y), Vec2::new(w, h));
+		let a = ui.allocate_rect(rect_a, Sense::click());
+		let rect_b = rect_a.translate(to_cells_rect.min - from_cells_rect.min);
+		let b = ui.allocate_rect(rect_b, Sense::click());
+		let result = a.union(b);
+		let color = if result.hovered() {
+			Color32::GRAY
+		} else {
+			Color32::DARK_GRAY
+		};
+		ui.painter_at(bounds).rect_filled(rect_a, 0., color);
+		ui.painter_at(bounds).rect_filled(rect_b, 0., color);
+
+		result.clicked()
+	};
+	if resize_box(bounds.min.x, bounds.min.y + margin, margin, patt_height) {
+		rule.from.extend_left();
+		rule.to.extend_left();
+	}
+	if resize_box(
+		from_cells_rect.max.x,
+		bounds.min.y + margin,
+		margin,
+		patt_height,
+	) {
+		rule.from.extend_right();
+		rule.to.extend_right();
+	}
+	if resize_box(bounds.min.x + margin, bounds.min.y, patt_width, margin) {
+		rule.from.extend_up();
+		rule.to.extend_up();
+	}
+	if resize_box(
+		bounds.min.x + margin,
+		bounds.max.y - margin,
+		patt_width,
+		margin,
+	) {
+		rule.from.extend_down();
+		rule.to.extend_down();
 	}
 }
 

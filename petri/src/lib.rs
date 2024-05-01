@@ -20,9 +20,19 @@ pub struct Chunk {
 pub struct Rule {
 	pub from: RulePattern,
 	pub to: RulePattern,
-	// probability
-	// flip
-	// rotate
+	// enabled: bool
+	// probability: u8
+	// flip:
+	// rotate:
+}
+
+impl Rule {
+	pub fn new() -> Self {
+		Self {
+			from: RulePattern::new(),
+			to: RulePattern::new(),
+		}
+	}
 }
 
 impl Chunk {
@@ -106,8 +116,6 @@ impl Dish {
 		let x = random::<usize>() % CHUNK_SIZE;
 		let y = random::<usize>() % CHUNK_SIZE;
 		let rule = random::<usize>() % self.rules.len();
-		// let rule = &self.rules[rule];
-
 		self.fire_rule(rule, x, y);
 	}
 
@@ -164,6 +172,14 @@ pub struct RulePattern {
 }
 
 impl RulePattern {
+	pub fn new() -> Self {
+		Self {
+			width: 1,
+			height: 1,
+			contents: vec![None],
+		}
+	}
+
 	pub fn get(&self, x: usize, y: usize) -> Option<Cell> {
 		if x >= self.width || y >= self.height {
 			None
@@ -192,6 +208,44 @@ impl RulePattern {
 
 	pub fn width(&self) -> usize {
 		self.width
+	}
+
+	pub fn extend_left(&mut self) {
+		let new_width = self.width + 1;
+		let mut new_vec = vec![None; new_width * self.height];
+		for y in 0..self.height {
+			for x in 0..self.width {
+				new_vec[x + new_width * y + 1] = self.contents[x + self.width * y];
+			}
+		}
+		self.width += 1;
+		self.contents = new_vec;
+	}
+
+	pub fn extend_right(&mut self) {
+		let new_width = self.width + 1;
+		let mut new_vec = vec![None; new_width * self.height];
+		for y in 0..self.height {
+			for x in 0..self.width {
+				new_vec[x + new_width * y] = self.contents[x + self.width * y];
+			}
+		}
+		self.width += 1;
+		self.contents = new_vec;
+	}
+
+	pub fn extend_up(&mut self) {
+		for _ in 0..self.width {
+			self.contents.insert(0, None);
+		}
+		self.height += 1;
+	}
+
+	pub fn extend_down(&mut self) {
+		for _ in 0..self.width {
+			self.contents.push(None);
+		}
+		self.height += 1;
 	}
 }
 
