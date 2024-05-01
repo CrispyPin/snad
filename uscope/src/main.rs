@@ -33,7 +33,7 @@ impl UScope {
 	fn new(_cc: &eframe::CreationContext<'_>) -> Self {
 		Self {
 			dish: Dish::new(),
-			speed: 100,
+			speed: 250,
 			brush: Cell(1),
 			celltypes: vec![
 				CellData::new("air", 0, 0, 0),
@@ -51,7 +51,10 @@ impl eframe::App for UScope {
 		}
 		SidePanel::left("left_panel").show(ctx, |ui| {
 			ui.heading("Simulation");
+			ui.label("speed");
 			ui.add(Slider::new(&mut self.speed, 0..=5000));
+			ui.separator();
+
 			ui.heading("Cells");
 			for (i, cell) in self.celltypes.iter_mut().enumerate() {
 				ui.horizontal(|ui| {
@@ -70,13 +73,16 @@ impl eframe::App for UScope {
 				let name = format!("cell #{}", self.celltypes.len());
 				self.celltypes.push(CellData { name, color })
 			}
+			ui.separator();
+
 			ui.heading("Rules");
 			let mut to_remove = None;
 			for (i, rule) in self.dish.rules.iter_mut().enumerate() {
-				if ui.button("x").clicked() {
+				rule_editor(ui, rule, &self.celltypes);
+				if ui.button("delete").clicked() {
 					to_remove = Some(i);
 				}
-				rule_editor(ui, rule, &self.celltypes);
+				ui.separator();
 			}
 			if let Some(i) = to_remove {
 				self.dish.rules.remove(i);
@@ -118,6 +124,8 @@ fn paint_chunk(painter: Painter, chunk: &Chunk, cells: &[CellData]) {
 const CSIZE: f32 = 24.;
 const OUTLINE: (f32, Color32) = (3., Color32::GRAY);
 fn rule_editor(ui: &mut Ui, rule: &mut Rule, cells: &[CellData]) {
+	ui.checkbox(&mut rule.enabled, "enable rule");
+
 	let cells_y = rule.from.height();
 	let cells_x = rule.from.width();
 	let margin = 8.;

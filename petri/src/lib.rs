@@ -20,7 +20,7 @@ pub struct Chunk {
 pub struct Rule {
 	pub from: RulePattern,
 	pub to: RulePattern,
-	// enabled: bool
+	pub enabled: bool,
 	// probability: u8
 	// flip:
 	// rotate:
@@ -29,6 +29,7 @@ pub struct Rule {
 impl Rule {
 	pub fn new() -> Self {
 		Self {
+			enabled: false,
 			from: RulePattern::new(),
 			to: RulePattern::new(),
 		}
@@ -72,6 +73,7 @@ impl Dish {
 
 			rules: vec![
 				Rule {
+					enabled: true,
 					from: RulePattern {
 						width: 1,
 						height: 2,
@@ -84,6 +86,7 @@ impl Dish {
 					},
 				},
 				Rule {
+					enabled: true,
 					from: RulePattern {
 						width: 2,
 						height: 2,
@@ -96,6 +99,7 @@ impl Dish {
 					},
 				},
 				Rule {
+					enabled: true,
 					from: RulePattern {
 						width: 2,
 						height: 2,
@@ -117,7 +121,17 @@ impl Dish {
 		}
 		let x = random::<usize>() % CHUNK_SIZE;
 		let y = random::<usize>() % CHUNK_SIZE;
-		let rule = random::<usize>() % self.rules.len();
+		let enabled_rules = self
+			.rules
+			.iter()
+			.enumerate()
+			.filter_map(|(i, r)| r.enabled.then_some(i))
+			.collect::<Vec<_>>();
+		if enabled_rules.is_empty() {
+			return;
+		}
+		let rule = random::<usize>() % enabled_rules.len();
+		let rule = enabled_rules[rule];
 		self.fire_rule(rule, x, y);
 	}
 
