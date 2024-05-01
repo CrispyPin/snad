@@ -1,8 +1,10 @@
 use eframe::{
 	egui::{CentralPanel, Color32, Painter, Pos2, Rect, Sense, SidePanel, Slider, Ui, Vec2},
+	epaint::Hsva,
 	NativeOptions,
 };
 use petri::{Cell, Chunk, Dish, Rule, RulePattern, CHUNK_SIZE};
+use rand::prelude::*;
 
 fn main() {
 	eframe::run_native(
@@ -53,11 +55,19 @@ impl eframe::App for UScope {
 			ui.heading("Cells");
 			for (i, cell) in self.celltypes.iter_mut().enumerate() {
 				ui.horizontal(|ui| {
-					ui.set_width(100.);
+					ui.set_width(120.);
 					ui.radio_value(&mut self.brush.0, i as u16, "");
 					ui.text_edit_singleline(&mut cell.name);
 					ui.color_edit_button_srgba(&mut cell.color);
 				});
+			}
+			if ui.button("add cell").clicked() {
+				let h = random::<f32>();
+				let s = random::<f32>() * 0.5 + 0.5;
+				let v = random::<f32>() * 0.5 + 0.5;
+				let color = Hsva::new(h, s, v, 1.).into();
+				let name = format!("cell #{}", self.celltypes.len());
+				self.celltypes.push(CellData { name, color })
 			}
 			ui.heading("Rules");
 			for rule in &mut self.dish.rules {
