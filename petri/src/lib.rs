@@ -112,7 +112,9 @@ impl Dish {
 	}
 
 	pub fn fire_blindly(&mut self) {
-		assert!(!self.rules.is_empty());
+		if self.rules.is_empty() {
+			return;
+		}
 		let x = random::<usize>() % CHUNK_SIZE;
 		let y = random::<usize>() % CHUNK_SIZE;
 		let rule = random::<usize>() % self.rules.len();

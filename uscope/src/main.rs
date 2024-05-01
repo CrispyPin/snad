@@ -61,6 +61,7 @@ impl eframe::App for UScope {
 					ui.color_edit_button_srgba(&mut cell.color);
 				});
 			}
+
 			if ui.button("add cell").clicked() {
 				let h = random::<f32>();
 				let s = random::<f32>() * 0.5 + 0.5;
@@ -70,8 +71,15 @@ impl eframe::App for UScope {
 				self.celltypes.push(CellData { name, color })
 			}
 			ui.heading("Rules");
-			for rule in &mut self.dish.rules {
+			let mut to_remove = None;
+			for (i, rule) in self.dish.rules.iter_mut().enumerate() {
+				if ui.button("x").clicked() {
+					to_remove = Some(i);
+				}
 				rule_editor(ui, rule, &self.celltypes);
+			}
+			if let Some(i) = to_remove {
+				self.dish.rules.remove(i);
 			}
 			if ui.button("add rule").clicked() {
 				self.dish.rules.push(Rule::new());
@@ -108,7 +116,7 @@ fn paint_chunk(painter: Painter, chunk: &Chunk, cells: &[CellData]) {
 }
 
 const CSIZE: f32 = 24.;
-const OUTLINE: (f32, Color32) = (1., Color32::GRAY);
+const OUTLINE: (f32, Color32) = (3., Color32::GRAY);
 fn rule_editor(ui: &mut Ui, rule: &mut Rule, cells: &[CellData]) {
 	let cells_y = rule.from.height();
 	let cells_x = rule.from.width();
