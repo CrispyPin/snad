@@ -1,8 +1,8 @@
 use eframe::{
-	egui::{CentralPanel, Color32, Painter, Rect, Sense, SidePanel, Ui, Vec2},
+	egui::{CentralPanel, Color32, Painter, Pos2, Rect, Sense, SidePanel, Ui, Vec2},
 	NativeOptions,
 };
-use petri::{Chunk, Dish, Rule, CHUNK_SIZE};
+use petri::{Cell, Chunk, Dish, Rule, RulePattern, CHUNK_SIZE};
 
 fn main() {
 	eframe::run_native(
@@ -44,11 +44,15 @@ impl eframe::App for UScope {
 			self.dish.fire_blindly();
 		}
 		SidePanel::left("left_panel").show(ctx, |ui| {
-			ui.heading("Rules");
-			ui.text_edit_singleline(&mut "dummy");
-			if ui.button("aaa").clicked() {
-				dbg!(&self.dish.rules);
+			ui.heading("Cells");
+			for cell in &mut self.celltypes {
+				ui.horizontal(|ui| {
+					ui.set_width(100.);
+					ui.text_edit_singleline(&mut cell.name);
+					ui.color_edit_button_srgba(&mut cell.color);
+				});
 			}
+			ui.heading("Rules");
 			for rule in &mut self.dish.rules {
 				rule_editor(ui, rule, &self.celltypes);
 			}
@@ -75,12 +79,11 @@ fn paint_chunk(painter: Painter, chunk: &Chunk, cells: &[CellData]) {
 	}
 }
 
+const CSIZE: f32 = 24.;
+const OUTLINE: (f32, Color32) = (1., Color32::GRAY);
 fn rule_editor(ui: &mut Ui, rule: &mut Rule, cells: &[CellData]) {
 	let patt_height = rule.from.height();
 	let patt_width = rule.from.height();
-
-	const CSIZE: f32 = 24.;
-	const OUTLINE: (f32, Color32) = (1., Color32::GRAY);
 
 	let (_, bounds) = ui.allocate_space(Vec2::new(
 		CSIZE * (patt_width * 2 + 1) as f32,
@@ -88,29 +91,37 @@ fn rule_editor(ui: &mut Ui, rule: &mut Rule, cells: &[CellData]) {
 	));
 	for x in 0..patt_width {
 		for y in 0..patt_height {
-			let rect = Rect::from_min_size(
-				bounds.min + Vec2::from((x as f32, y as f32)) * CSIZE,
-				Vec2::splat(CSIZE),
-			);
-			if let Some(cell) = rule.from.get_mut(x, y) {
-				let color = cells[cell.id()].color;
-				ui.painter().rect(rect, 2., color, OUTLINE);
-				let a = ui.allocate_rect(rect, Sense::click());
-				if a.clicked() {
-					cell.0 = (cell.0 + 1) % cells.len() as u16;
-				}
-			}
+			rule_cell_edit(ui, bounds.min, &mut rule.from, x, y, cells);
+			let offset = Vec2::X * (patt_width as f32 + 1.) * CSIZE;
+			rule_cell_edit(ui, bounds.min + offset, &mut rule.to, x, y, cells);
+		}
+	}
+}
 
-			if let Some(cell) = rule.to.get_mut(x, y) {
-				let rect = rect.translate(Vec2::X * (patt_width as f32 + 1.) * CSIZE);
-				let color = cells[cell.id()].color;
-				ui.painter().rect(rect, 2., color, OUTLINE);
-				let a = ui.allocate_rect(rect, Sense::click());
-				if a.clicked() {
-					cell.0 = (cell.0 + 1) % cells.len() as u16;
-				}
+fn rule_cell_edit(
+	ui: &mut Ui,
+	origin: Pos2,
+	rule: &mut RulePattern,
+	x: usize,
+	y: usize,
+	cells: &[CellData],
+) {
+	let rect = Rect::from_min_size(
+		origin + Vec2::from((x as f32, y as f32)) * CSIZE,
+		Vec2::splat(CSIZE),
+	);
+	let aabb = ui.allocate_rect(rect, Sense::click());
+	if let Some(cell) = rule.get_mut(x, y) {
+		let color = cells[cell.id()].color;
+		ui.painter().rect(rect, 2., color, OUTLINE);
+		if aabb.clicked() {
+			cell.0 += 1;
+			if cell.0 as usize == cells.len() {
+				rule.set(x, y, None);
 			}
 		}
+	} else if aabb.clicked() {
+		rule.set(x, y, Some(Cell(0)));
 	}
 }
 

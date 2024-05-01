@@ -180,6 +180,12 @@ impl RulePattern {
 		}
 	}
 
+	pub fn set(&mut self, x: usize, y: usize, cell: Option<Cell>) {
+		if x < self.width && y < self.height {
+			self.contents[x + self.width * y] = cell
+		}
+	}
+
 	pub fn height(&self) -> usize {
 		self.height
 	}
