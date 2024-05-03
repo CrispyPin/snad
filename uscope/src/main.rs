@@ -186,7 +186,7 @@ impl eframe::App for UScope {
 					}
 					ui.separator();
 					if ui.button("add rule").clicked() {
-						self.dish.rules.push(Rule::default());
+						self.dish.rules.push(Rule::new());
 					}
 				});
 			});

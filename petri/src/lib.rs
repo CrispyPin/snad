@@ -18,8 +18,10 @@ pub struct Chunk {
 	pub contents: Box<[[Cell; CHUNK_SIZE]; CHUNK_SIZE]>,
 }
 
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Rule {
+	#[serde(default)]
+	pub name: String,
 	base: SubRule,
 	#[serde(skip)]
 	variants: Vec<SubRule>,
@@ -59,12 +61,6 @@ pub enum RuleCellTo {
 	GroupRandom(usize),
 	/// copy the cell from the corresponding input position
 	Copy(usize),
-}
-
-impl std::default::Default for SubRule {
-	fn default() -> Self {
-		Self::new()
-	}
 }
 
 impl SubRule {
@@ -118,6 +114,18 @@ impl Rule {
 	pub const SHRINK_RIGHT: ResizeParam = (-1, 0, 0, 0);
 	pub const SHRINK_UP: ResizeParam = (0, -1, 0, 1);
 	pub const SHRINK_DOWN: ResizeParam = (0, -1, 0, 0);
+
+	pub fn new() -> Self {
+		Self {
+			name: "new rule".into(),
+			enabled: false,
+			base: SubRule::new(),
+			variants: vec![SubRule::new()],
+			flip_h: false,
+			flip_v: false,
+			rotate: false,
+		}
+	}
 
 	pub fn get(&self, x: usize, y: usize) -> (RuleCellFrom, RuleCellTo) {
 		self.base.get(x, y)
@@ -280,7 +288,7 @@ impl Dish {
 						(RuleCellFrom::One(Cell(0)), RuleCellTo::One(Cell(1))),
 					],
 				},
-				..Rule::default()
+				..Rule::new()
 			},
 			Rule {
 				enabled: true,
@@ -295,7 +303,7 @@ impl Dish {
 					],
 				},
 				flip_h: true,
-				..Rule::default()
+				..Rule::new()
 			},
 		];
 
