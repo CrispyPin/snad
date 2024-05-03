@@ -100,92 +100,96 @@ impl eframe::App for UScope {
 		for _ in 0..self.speed {
 			self.dish.fire_blindly();
 		}
-		SidePanel::left("left_panel").show(ctx, |ui| {
-			ui.heading("Simulation");
-			ui.label("speed");
-			ui.add(Slider::new(&mut self.speed, 0..=5000));
-			ui.checkbox(&mut self.show_grid, "show grid");
-			ui.horizontal(|ui| {
-				if ui.button("Save").clicked() {
-					self.save_universe();
-				}
-				if ui.button("Open").clicked() {
-					self.open_universe();
-				}
-			});
-			ui.separator();
-
-			ui.heading("Cells");
-			for (i, cell) in self.cell_types.iter_mut().enumerate() {
+		SidePanel::left("left_panel")
+			.min_width(100.)
+			.show(ctx, |ui| {
+				ui.heading("Simulation");
+				ui.label("speed");
+				ui.add(Slider::new(&mut self.speed, 0..=5000));
+				ui.checkbox(&mut self.show_grid, "show grid");
 				ui.horizontal(|ui| {
-					ui.set_width(120.);
-					ui.radio_value(&mut self.brush.0, i as u16, "");
-					ui.text_edit_singleline(&mut cell.name);
-					ui.color_edit_button_srgba(&mut cell.color);
-				});
-			}
-
-			if ui.button("add cell").clicked() {
-				let h = random::<f32>();
-				let s = random::<f32>() * 0.5 + 0.5;
-				let v = random::<f32>() * 0.5 + 0.5;
-				let color = Hsva::new(h, s, v, 1.).into();
-				let name = format!("cell #{}", self.cell_types.len());
-				self.cell_types.push(CellData { name, color })
-			}
-			if ui.button("fill").clicked() {
-				self.dish.chunk.contents.fill([self.brush; CHUNK_SIZE]);
-			}
-			ui.separator();
-
-			ui.heading("Groups");
-			for group in &mut self.dish.cell_groups {
-				let (rect, _response) = ui.allocate_exact_size(Vec2::splat(CSIZE), Sense::click());
-				draw_group(ui, rect, group, &self.cell_types);
-				ui.menu_button("edit", |ui| {
-					let mut void = group.contains(&None);
-					if ui.checkbox(&mut void, "void").changed() {
-						if void {
-							group.push(None);
-						} else {
-							group.retain(|c| c.is_some());
-						}
+					if ui.button("Save").clicked() {
+						self.save_universe();
 					}
-					for (i, celldata) in self.cell_types.iter().enumerate() {
-						let mut included = group.contains(&Some(Cell(i as u16)));
-						if ui.checkbox(&mut included, &celldata.name).changed() {
-							if included {
-								group.push(Some(Cell(i as u16)));
-							} else {
-								group.retain(|c| c != &Some(Cell(i as u16)));
-							}
-						}
+					if ui.button("Open").clicked() {
+						self.open_universe();
 					}
 				});
-			}
-			if ui.button("add group").clicked() {
-				self.dish.cell_groups.push(Vec::new());
-			}
-
-			ui.heading("Rules");
-			ScrollArea::vertical().show(ui, |ui| {
-				let mut to_remove = None;
-				for (i, rule) in self.dish.rules.iter_mut().enumerate() {
-					ui.separator();
-					rule_editor(ui, rule, &self.cell_types, &self.dish.cell_groups);
-					if ui.button("delete").clicked() {
-						to_remove = Some(i);
-					}
-				}
-				if let Some(i) = to_remove {
-					self.dish.rules.remove(i);
-				}
 				ui.separator();
-				if ui.button("add rule").clicked() {
-					self.dish.rules.push(Rule::new());
-				}
+
+				ScrollArea::vertical().show(ui, |ui| {
+					ui.heading("Cells");
+					for (i, cell) in self.cell_types.iter_mut().enumerate() {
+						ui.horizontal(|ui| {
+							ui.set_width(120.);
+							ui.radio_value(&mut self.brush.0, i as u16, "");
+							ui.text_edit_singleline(&mut cell.name);
+							ui.color_edit_button_srgba(&mut cell.color);
+						});
+					}
+
+					if ui.button("add cell").clicked() {
+						let h = random::<f32>();
+						let s = random::<f32>() * 0.5 + 0.5;
+						let v = random::<f32>() * 0.5 + 0.5;
+						let color = Hsva::new(h, s, v, 1.).into();
+						let name = format!("cell #{}", self.cell_types.len());
+						self.cell_types.push(CellData { name, color })
+					}
+					if ui.button("fill").clicked() {
+						self.dish.chunk.contents.fill([self.brush; CHUNK_SIZE]);
+					}
+					ui.separator();
+
+					ui.heading("Groups");
+					for group in &mut self.dish.cell_groups {
+						let (rect, _response) =
+							ui.allocate_exact_size(Vec2::splat(CSIZE), Sense::click());
+						draw_group(ui, rect, group, &self.cell_types);
+						ui.menu_button("edit", |ui| {
+							let mut void = group.contains(&None);
+							if ui.checkbox(&mut void, "void").changed() {
+								if void {
+									group.push(None);
+								} else {
+									group.retain(|c| c.is_some());
+								}
+							}
+							for (i, celldata) in self.cell_types.iter().enumerate() {
+								let mut included = group.contains(&Some(Cell(i as u16)));
+								if ui.checkbox(&mut included, &celldata.name).changed() {
+									if included {
+										group.push(Some(Cell(i as u16)));
+									} else {
+										group.retain(|c| c != &Some(Cell(i as u16)));
+									}
+								}
+							}
+						});
+					}
+					if ui.button("add group").clicked() {
+						self.dish.cell_groups.push(Vec::new());
+					}
+
+					ui.heading("Rules");
+
+					let mut to_remove = None;
+					for (i, rule) in self.dish.rules.iter_mut().enumerate() {
+						ui.separator();
+						rule_editor(ui, rule, &self.cell_types, &self.dish.cell_groups);
+						if ui.button("delete").clicked() {
+							to_remove = Some(i);
+						}
+					}
+					if let Some(i) = to_remove {
+						self.dish.rules.remove(i);
+					}
+					ui.separator();
+					if ui.button("add rule").clicked() {
+						self.dish.rules.push(Rule::default());
+					}
+				});
 			});
-		});
 		CentralPanel::default().show(ctx, |ui| {
 			let bounds = ui.available_rect_before_wrap();
 			let painter = ui.painter_at(bounds);
@@ -505,7 +509,11 @@ fn rule_cell_edit_to(
 }
 
 fn draw_group(ui: &mut Ui, rect: Rect, group: &[Option<Cell>], cells: &[CellData]) {
-	let group_size = group.len();
+	let mut group_size = group.len();
+	let has_void = group.contains(&None);
+	if has_void {
+		group_size -= 1;
+	}
 	let radius_per_color = (CSIZE * 0.7) / (group_size as f32);
 	for (i, cell) in group.iter().flatten().enumerate() {
 		let color = cells[cell.id()].color;
@@ -513,7 +521,7 @@ fn draw_group(ui: &mut Ui, rect: Rect, group: &[Option<Cell>], cells: &[CellData
 		ui.painter_at(rect)
 			.circle_filled(rect.center(), radius, color);
 	}
-	if group.contains(&None) {
+	if has_void {
 		ui.painter_at(rect)
 			.line_segment([rect.min, rect.max], (1., Color32::WHITE));
 	}
