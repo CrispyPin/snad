@@ -18,13 +18,61 @@ pub struct Chunk {
 
 #[derive(Debug)]
 pub struct Rule {
-	pub from: RulePattern,
-	pub to: RulePattern,
+	base: SubRule,
+	variants: Vec<SubRule>,
 	pub enabled: bool,
 	// probability: u8
 	pub flip_h: bool,
 	pub flip_v: bool,
 	// rotate:
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct SubRule {
+	width: usize,
+	height: usize,
+	contents: Vec<(Option<Cell>, Option<Cell>)>,
+}
+
+impl SubRule {
+	fn new() -> Self {
+		Self {
+			width: 1,
+			height: 1,
+			contents: vec![(None, None)],
+		}
+	}
+
+	fn get(&self, x: usize, y: usize) -> (Option<Cell>, Option<Cell>) {
+		if x >= self.width || y >= self.height {
+			(None, None)
+		} else {
+			self.contents[x + self.width * y].clone()
+		}
+	}
+
+	fn get_mut(&mut self, x: usize, y: usize) -> &mut (Option<Cell>, Option<Cell>) {
+		assert!(x < self.width || y < self.height);
+		&mut self.contents[x + self.width * y]
+	}
+
+	fn set_both(&mut self, x: usize, y: usize, cells: (Option<Cell>, Option<Cell>)) {
+		if x < self.width && y < self.height {
+			self.contents[x + self.width * y] = cells;
+		}
+	}
+
+	fn set_from(&mut self, x: usize, y: usize, cell: Option<Cell>) {
+		if x < self.width && y < self.height {
+			self.contents[x + self.width * y].0 = cell;
+		}
+	}
+
+	fn set_to(&mut self, x: usize, y: usize, cell: Option<Cell>) {
+		if x < self.width && y < self.height {
+			self.contents[x + self.width * y].1 = cell;
+		}
+	}
 }
 
 type ResizeParam = (isize, isize, isize, isize);
@@ -41,24 +89,109 @@ impl Rule {
 	pub fn new() -> Self {
 		Self {
 			enabled: false,
-			from: RulePattern::new(),
-			to: RulePattern::new(),
+			base: SubRule::new(),
+			variants: Vec::new(),
 			flip_h: false,
 			flip_v: false,
 		}
 	}
 
+	pub fn get(&self, x: usize, y: usize) -> (Option<Cell>, Option<Cell>) {
+		self.base.get(x, y)
+	}
+
+	pub fn get_mut(&mut self, x: usize, y: usize) -> &mut (Option<Cell>, Option<Cell>) {
+		self.base.get_mut(x, y)
+	}
+
+	pub fn set_from(&mut self, x: usize, y: usize, cell: Option<Cell>) {
+		self.base.set_from(x, y, cell);
+		self.generate_variants();
+	}
+
+	pub fn set_to(&mut self, x: usize, y: usize, cell: Option<Cell>) {
+		self.base.set_to(x, y, cell);
+		self.generate_variants();
+	}
+
+	pub fn height(&self) -> usize {
+		self.base.height
+	}
+
+	pub fn width(&self) -> usize {
+		self.base.width
+	}
+
 	pub fn resize(&mut self, params: ResizeParam) {
 		let (dw, dh, dx, dy) = params;
-		self.from.resize(dw, dh, dx, dy);
-		self.to.resize(dw, dh, dx, dy);
+
+		let new_width = self.base.width.saturating_add_signed(dw);
+		let new_height = self.base.height.saturating_add_signed(dh);
+		if new_width < 1 || new_height < 1 {
+			return;
+		}
+		let mut new_contents = vec![(None, None); new_width * new_height];
+
+		for nx in 0..new_width {
+			let oldx = nx.wrapping_add_signed(dx);
+			for ny in 0..new_height {
+				let oldy = ny.wrapping_add_signed(dy);
+				new_contents[nx + new_width * ny] = self.get(oldx, oldy);
+			}
+		}
+
+		self.base.contents = new_contents;
+		self.base.height = new_height;
+		self.base.width = new_width;
+		self.generate_variants();
+	}
+
+	pub fn generate_variants(&mut self) {
+		self.variants.clear();
+		self.variants.push(self.base.clone());
+
+		fn transform_variants(variants: &mut Vec<SubRule>, f: fn(&SubRule) -> SubRule) {
+			let mut new = Vec::new();
+			for v in variants.iter() {
+				let new_variant = f(v);
+				if !variants.contains(&new_variant) {
+					new.push(new_variant);
+				}
+			}
+			variants.extend_from_slice(&new);
+		}
+
+		if self.flip_h {
+			transform_variants(&mut self.variants, |b| {
+				let mut new = b.clone();
+				for y in 0..new.height {
+					for x in 0..new.width {
+						let old = b.get(new.width - x - 1, y);
+						new.set_both(x, y, old);
+					}
+				}
+				new
+			})
+		}
+		if self.flip_v {
+			transform_variants(&mut self.variants, |b| {
+				let mut new = b.clone();
+				for y in 0..new.height {
+					for x in 0..new.width {
+						let old = b.get(x, new.height - y - 1);
+						new.set_both(x, y, old);
+					}
+				}
+				new
+			})
+		}
 	}
 }
 
 impl Chunk {
 	fn new() -> Self {
 		Self {
-			contents: vec![[Cell::EMPTY; CHUNK_SIZE]; CHUNK_SIZE]
+			contents: vec![[Cell(0); CHUNK_SIZE]; CHUNK_SIZE]
 				.into_boxed_slice()
 				.try_into()
 				.unwrap(),
@@ -87,41 +220,43 @@ impl Chunk {
 
 impl Dish {
 	pub fn new() -> Self {
+		let mut default_rules = vec![
+			Rule {
+				enabled: true,
+				base: SubRule {
+					width: 1,
+					height: 2,
+					contents: vec![
+						(Some(Cell(1)), Some(Cell(0))),
+						(Some(Cell(0)), Some(Cell(1))),
+					],
+				},
+				..Rule::new()
+			},
+			Rule {
+				enabled: true,
+				base: SubRule {
+					width: 2,
+					height: 2,
+					contents: vec![
+						(Some(Cell(1)), Some(Cell(0))),
+						(None, None),
+						(Some(Cell(1)), None),
+						(Some(Cell(0)), Some(Cell(1))),
+					],
+				},
+				flip_h: true,
+				..Rule::new()
+			},
+		];
+
+		for rule in &mut default_rules {
+			rule.generate_variants()
+		}
+
 		Self {
 			chunk: Chunk::new().fill_random(),
-
-			rules: vec![
-				Rule {
-					enabled: true,
-					from: RulePattern {
-						width: 1,
-						height: 2,
-						contents: vec![Some(Cell(1)), Some(Cell(0))],
-					},
-					to: RulePattern {
-						width: 1,
-						height: 2,
-						contents: vec![Some(Cell(0)), Some(Cell(1))],
-					},
-					flip_h: false,
-					flip_v: false,
-				},
-				Rule {
-					enabled: true,
-					from: RulePattern {
-						width: 2,
-						height: 2,
-						contents: vec![Some(Cell(1)), None, Some(Cell(1)), Some(Cell(0))],
-					},
-					to: RulePattern {
-						width: 2,
-						height: 2,
-						contents: vec![Some(Cell(0)), None, Some(Cell(1)), Some(Cell(1))],
-					},
-					flip_h: true,
-					flip_v: false,
-				},
-			],
+			rules: default_rules,
 		}
 	}
 
@@ -147,29 +282,46 @@ impl Dish {
 
 	fn fire_rule(&mut self, rule_index: usize, x: usize, y: usize) {
 		let rule = &self.rules[rule_index];
-		let width = rule.to.width;
-		let height = rule.to.height;
-		// check is match
-		for dx in 0..width {
-			for dy in 0..height {
-				let x = x + dx;
-				let y = y + dy;
-				if let Some(rule_cell) = rule.from.get(dx, dy) {
-					if self.get_cell(x, y) != Some(rule_cell) {
-						return;
-					}
-				}
+		// find matching variants
+		let mut matching_variants = Vec::new();
+		for (i, v) in rule.variants.iter().enumerate() {
+			if self.subrule_matches(x, y, v) {
+				matching_variants.push(i);
 			}
 		}
+		if matching_variants.is_empty() {
+			return;
+		}
+
+		let variant_index = random::<usize>() % matching_variants.len();
+		let variant = rule.variants[matching_variants[variant_index]].clone();
+
+		let width = variant.width;
+		let height = variant.height;
 		for dx in 0..width {
 			for dy in 0..height {
 				let x = x + dx;
 				let y = y + dy;
-				if let Some(rule_cell) = &self.rules[rule_index].to.get(dx, dy) {
+				if let Some(rule_cell) = variant.get(dx, dy).1 {
 					self.set_cell(x, y, rule_cell.clone());
 				}
 			}
 		}
+	}
+
+	fn subrule_matches(&self, x: usize, y: usize, subrule: &SubRule) -> bool {
+		for dx in 0..subrule.width {
+			for dy in 0..subrule.height {
+				let x = x + dx;
+				let y = y + dy;
+				if let Some(rule_cell) = subrule.get(dx, dy).0 {
+					if self.get_cell(x, y) != Some(rule_cell) {
+						return false;
+					}
+				}
+			}
+		}
+		true
 	}
 
 	//todo isize
@@ -190,92 +342,8 @@ impl Dish {
 	}
 }
 
-#[derive(Debug)]
-pub struct RulePattern {
-	width: usize,
-	height: usize,
-	contents: Vec<Option<Cell>>,
-}
-
-impl RulePattern {
-	pub fn new() -> Self {
-		Self {
-			width: 1,
-			height: 1,
-			contents: vec![None],
-		}
-	}
-
-	pub fn get(&self, x: usize, y: usize) -> Option<Cell> {
-		if x >= self.width || y >= self.height {
-			None
-		} else {
-			self.contents[x + self.width * y].clone()
-		}
-	}
-
-	pub fn get_mut(&mut self, x: usize, y: usize) -> Option<&mut Cell> {
-		if x >= self.width || y >= self.height {
-			None
-		} else {
-			self.contents[x + self.width * y].as_mut()
-		}
-	}
-
-	pub fn set(&mut self, x: usize, y: usize, cell: Option<Cell>) {
-		if x < self.width && y < self.height {
-			self.contents[x + self.width * y] = cell
-		}
-	}
-
-	pub fn height(&self) -> usize {
-		self.height
-	}
-
-	pub fn width(&self) -> usize {
-		self.width
-	}
-
-	fn resize(&mut self, dw: isize, dh: isize, dx: isize, dy: isize) {
-		let new_width = self.width.saturating_add_signed(dw);
-		let new_height = self.height.saturating_add_signed(dh);
-		if new_width < 1 || new_height < 1 {
-			return;
-		}
-		let mut new_contents = vec![None; new_width * new_height];
-
-		for nx in 0..new_width {
-			let oldx = nx.wrapping_add_signed(dx);
-			for ny in 0..new_height {
-				let oldy = ny.wrapping_add_signed(dy);
-				new_contents[nx + new_width * ny] = self.get(oldx, oldy);
-			}
-		}
-
-		self.contents = new_contents;
-		self.height = new_height;
-		self.width = new_width;
-	}
-}
-
 impl Cell {
-	pub const EMPTY: Self = Cell(0);
 	pub fn id(&self) -> usize {
 		self.0 as usize
-	}
-}
-
-#[derive(Debug)]
-enum Dir {
-	Pos,
-	Neg,
-}
-
-impl Dir {
-	fn sign(&self) -> isize {
-		match self {
-			Dir::Pos => 1,
-			Dir::Neg => -1,
-		}
 	}
 }

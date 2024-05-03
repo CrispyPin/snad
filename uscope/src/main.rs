@@ -3,7 +3,7 @@ use eframe::{
 	epaint::Hsva,
 	NativeOptions,
 };
-use petri::{Cell, Chunk, Dish, Rule, RulePattern, CHUNK_SIZE};
+use petri::{Cell, Chunk, Dish, Rule, CHUNK_SIZE};
 use rand::prelude::*;
 
 fn main() {
@@ -122,14 +122,18 @@ fn paint_chunk(painter: Painter, chunk: &Chunk, cells: &[CellData]) {
 }
 
 const CSIZE: f32 = 24.;
-const OUTLINE: (f32, Color32) = (3., Color32::GRAY);
+const OUTLINE: (f32, Color32) = (2., Color32::GRAY);
 fn rule_editor(ui: &mut Ui, rule: &mut Rule, cells: &[CellData]) {
 	ui.checkbox(&mut rule.enabled, "enable rule");
-	ui.checkbox(&mut rule.flip_h, "flip H");
-	ui.checkbox(&mut rule.flip_v, "flip V");
+	if ui.checkbox(&mut rule.flip_h, "flip H").changed() {
+		rule.generate_variants();
+	}
+	if ui.checkbox(&mut rule.flip_v, "flip V").changed() {
+		rule.generate_variants();
+	}
 
-	let cells_y = rule.from.height();
-	let cells_x = rule.from.width();
+	let cells_y = rule.height();
+	let cells_x = rule.width();
 	let margin = 8.;
 	let patt_width = CSIZE * cells_x as f32;
 	let patt_height = CSIZE * cells_y as f32;
@@ -150,8 +154,12 @@ fn rule_editor(ui: &mut Ui, rule: &mut Rule, cells: &[CellData]) {
 
 	for x in 0..cells_x {
 		for y in 0..cells_y {
-			rule_cell_edit(ui, from_cells_rect.min, &mut rule.from, x, y, cells);
-			rule_cell_edit(ui, to_cells_rect.min, &mut rule.to, x, y, cells);
+			let (left, right) = rule.get_mut(x, y);
+			let changed_left = rule_cell_edit(ui, from_cells_rect.min, left, x, y, cells);
+			let changed_right = rule_cell_edit(ui, to_cells_rect.min, right, x, y, cells);
+			if changed_left || changed_right {
+				rule.generate_variants();
+			}
 		}
 	}
 
@@ -220,28 +228,33 @@ fn rule_editor(ui: &mut Ui, rule: &mut Rule, cells: &[CellData]) {
 fn rule_cell_edit(
 	ui: &mut Ui,
 	origin: Pos2,
-	rule: &mut RulePattern,
+	rule: &mut Option<Cell>,
 	x: usize,
 	y: usize,
 	cells: &[CellData],
-) {
+) -> bool {
+	let mut changed = false;
 	let rect = Rect::from_min_size(
 		origin + Vec2::from((x as f32, y as f32)) * CSIZE,
 		Vec2::splat(CSIZE),
 	);
 	let aabb = ui.allocate_rect(rect, Sense::click());
-	if let Some(cell) = rule.get_mut(x, y) {
+	if let Some(cell) = rule {
 		let color = cells[cell.id()].color;
-		ui.painter().rect(rect, 2., color, OUTLINE);
+		ui.painter()
+			.rect(rect.shrink(OUTLINE.0 / 2.), 0., color, OUTLINE);
 		if aabb.clicked() {
+			changed = true;
 			cell.0 += 1;
 			if cell.0 as usize == cells.len() {
-				rule.set(x, y, None);
+				*rule = None;
 			}
 		}
 	} else if aabb.clicked() {
-		rule.set(x, y, Some(Cell(0)));
+		*rule = Some(Cell(0));
+		changed = true;
 	}
+	changed
 }
 
 impl CellData {
