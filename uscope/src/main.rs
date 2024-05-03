@@ -10,10 +10,7 @@ use eframe::{
 	epaint::Hsva,
 	NativeOptions,
 };
-use egui::{
-	menu::{SubMenu, SubMenuButton},
-	popup, Layout, PointerButton,
-};
+use egui::PointerButton;
 use native_dialog::FileDialog;
 use rand::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -68,6 +65,7 @@ impl UScope {
 			let out = json!({
 				"cell_types": self.cell_types,
 				"rules": self.dish.rules,
+				"groups": self.dish.cell_groups,
 			});
 			let out = serde_json::to_string(&out).ok()?;
 			let mut file = File::create(path).ok()?;
@@ -85,9 +83,11 @@ impl UScope {
 			let s = fs::read_to_string(path).ok()?;
 			let data: Value = serde_json::from_str(&s).ok()?;
 			let cell_types = serde_json::from_value(data["cell_types"].clone()).ok()?;
+			let groups = serde_json::from_value(data["groups"].clone()).ok()?;
 			let rules = serde_json::from_value(data["rules"].clone()).ok()?;
 			self.cell_types = cell_types;
 			self.dish.rules = rules;
+			self.dish.cell_groups = groups;
 			self.dish.update_rules();
 		}
 		Some(())
@@ -215,6 +215,8 @@ fn paint_chunk(painter: Painter, chunk: &Chunk, cells: &[CellData], grid: bool) 
 }
 
 const CSIZE: f32 = 24.;
+const RESIZE_BUTTON_WIDTH: f32 = 8.;
+
 const OUTLINE: (f32, Color32) = (2., Color32::GRAY);
 fn rule_editor(ui: &mut Ui, rule: &mut Rule, cells: &[CellData], groups: &[Vec<Cell>]) {
 	ui.checkbox(&mut rule.enabled, "enable rule");
@@ -233,31 +235,41 @@ fn rule_editor(ui: &mut Ui, rule: &mut Rule, cells: &[CellData], groups: &[Vec<C
 
 	let cells_y = rule.height();
 	let cells_x = rule.width();
-	let margin = 8.;
 	let patt_width = CSIZE * cells_x as f32;
 	let patt_height = CSIZE * cells_y as f32;
 
 	let (_, bounds) = ui.allocate_space(Vec2::new(
-		patt_width * 2. + margin * 4. + CSIZE,
-		patt_height + margin * 2.,
+		patt_width * 2. + RESIZE_BUTTON_WIDTH * 4. + CSIZE,
+		patt_height + RESIZE_BUTTON_WIDTH * 2.,
 	));
 
 	let from_cells_rect = Rect::from_min_size(
-		bounds.min + Vec2::splat(margin),
+		bounds.min + Vec2::splat(RESIZE_BUTTON_WIDTH),
 		Vec2::new(patt_width, patt_height),
 	);
 	let to_cells_rect = Rect::from_min_size(
-		bounds.min + Vec2::splat(margin) + Vec2::X * (patt_width + margin * 2. + CSIZE),
+		bounds.min
+			+ Vec2::splat(RESIZE_BUTTON_WIDTH)
+			+ Vec2::X * (patt_width + RESIZE_BUTTON_WIDTH * 2. + CSIZE),
 		Vec2::new(patt_width, patt_height),
 	);
 
+	let mut overlay_lines = Vec::new();
 	for x in 0..cells_x {
 		for y in 0..cells_y {
 			let (left, right) = rule.get_mut(x, y);
 			let changed_left =
 				rule_cell_edit_from(ui, from_cells_rect.min, left, x, y, cells, groups);
-			let changed_right =
-				rule_cell_edit_to(ui, to_cells_rect.min, right, x, y, cells, groups);
+			let changed_right = rule_cell_edit_to(
+				ui,
+				to_cells_rect.min,
+				right,
+				(x, y),
+				cells,
+				groups,
+				(cells_x, cells_y),
+				&mut overlay_lines,
+			);
 			if changed_left || changed_right {
 				rule.generate_variants();
 			}
@@ -286,7 +298,12 @@ fn rule_editor(ui: &mut Ui, rule: &mut Rule, cells: &[CellData], groups: &[Vec<C
 
 		result.clicked()
 	};
-	if resize_box(bounds.min.x, bounds.min.y + margin, margin, patt_height) {
+	if resize_box(
+		bounds.min.x,
+		bounds.min.y + RESIZE_BUTTON_WIDTH,
+		RESIZE_BUTTON_WIDTH,
+		patt_height,
+	) {
 		if delete_mode {
 			rule.resize(Rule::SHRINK_LEFT);
 		} else {
@@ -295,8 +312,8 @@ fn rule_editor(ui: &mut Ui, rule: &mut Rule, cells: &[CellData], groups: &[Vec<C
 	}
 	if resize_box(
 		from_cells_rect.max.x,
-		bounds.min.y + margin,
-		margin,
+		bounds.min.y + RESIZE_BUTTON_WIDTH,
+		RESIZE_BUTTON_WIDTH,
 		patt_height,
 	) {
 		if delete_mode {
@@ -305,7 +322,12 @@ fn rule_editor(ui: &mut Ui, rule: &mut Rule, cells: &[CellData], groups: &[Vec<C
 			rule.resize(Rule::EXTEND_RIGHT);
 		}
 	}
-	if resize_box(bounds.min.x + margin, bounds.min.y, patt_width, margin) {
+	if resize_box(
+		bounds.min.x + RESIZE_BUTTON_WIDTH,
+		bounds.min.y,
+		patt_width,
+		RESIZE_BUTTON_WIDTH,
+	) {
 		if delete_mode {
 			rule.resize(Rule::SHRINK_UP);
 		} else {
@@ -313,16 +335,20 @@ fn rule_editor(ui: &mut Ui, rule: &mut Rule, cells: &[CellData], groups: &[Vec<C
 		}
 	}
 	if resize_box(
-		bounds.min.x + margin,
-		bounds.max.y - margin,
+		bounds.min.x + RESIZE_BUTTON_WIDTH,
+		bounds.max.y - RESIZE_BUTTON_WIDTH,
 		patt_width,
-		margin,
+		RESIZE_BUTTON_WIDTH,
 	) {
 		if delete_mode {
 			rule.resize(Rule::SHRINK_DOWN);
 		} else {
 			rule.resize(Rule::EXTEND_DOWN);
 		}
+	}
+
+	for (a, b) in overlay_lines {
+		ui.painter().line_segment([a, b], (2., Color32::WHITE));
 	}
 }
 
@@ -394,10 +420,11 @@ fn rule_cell_edit_to(
 	ui: &mut Ui,
 	origin: Pos2,
 	rule: &mut RuleCellTo,
-	x: usize,
-	y: usize,
+	(x, y): (usize, usize),
 	cells: &[CellData],
 	groups: &[Vec<Cell>],
+	(rule_width, rule_height): (usize, usize),
+	overlay_lines: &mut Vec<(Pos2, Pos2)>,
 ) -> bool {
 	let mut changed = false;
 	let rect = Rect::from_min_size(
@@ -420,7 +447,15 @@ fn rule_cell_edit_to(
 			let group = &groups[*group_id];
 			draw_group(ui, rect, group, cells);
 		}
-		RuleCellTo::Copy(_) => todo!(),
+		RuleCellTo::Copy(index) => {
+			let this = rect.center();
+			let x = *index % rule_width;
+			let y = *index / rule_width;
+			let target = origin + Vec2::from((x as f32, y as f32)) * CSIZE
+				- Vec2::X * (CSIZE * (rule_width as f32 + 1.) + RESIZE_BUTTON_WIDTH * 2.)
+				+ Vec2::splat(CSIZE) * 0.5;
+			overlay_lines.push((this, target));
+		}
 	}
 
 	if cycle_colors {
@@ -436,7 +471,10 @@ fn rule_cell_edit_to(
 				*group_id %= groups.len();
 				changed = true;
 			}
-			RuleCellTo::Copy(_) => todo!(),
+			RuleCellTo::Copy(index) => {
+				*index = (*index + 1) % (rule_width * rule_height);
+				changed = true;
+			}
 		}
 	}
 
@@ -450,9 +488,11 @@ fn rule_cell_edit_to(
 				*rule = RuleCellTo::GroupRandom(0);
 			}
 			RuleCellTo::GroupRandom(_) => {
+				*rule = RuleCellTo::Copy(0);
+			}
+			RuleCellTo::Copy(_) => {
 				*rule = RuleCellTo::None;
 			}
-			RuleCellTo::Copy(_) => todo!(),
 		}
 	}
 	changed

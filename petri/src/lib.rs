@@ -362,7 +362,7 @@ impl Dish {
 		let mut old_state = Vec::new();
 		for dy in 0..height {
 			for dx in 0..width {
-				old_state.push(self.get_cell(dx, dy).unwrap());
+				old_state.push(self.get_cell(x + dx, y + dy).unwrap());
 			}
 		}
 
