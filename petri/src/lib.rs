@@ -10,6 +10,7 @@ pub struct Cell(pub u16);
 pub struct Dish {
 	pub chunk: Chunk,
 	pub rules: Vec<Rule>,
+	pub cell_groups: Vec<Vec<Cell>>,
 }
 
 #[derive(Debug)]
@@ -33,7 +34,31 @@ pub struct Rule {
 struct SubRule {
 	width: usize,
 	height: usize,
-	contents: Vec<(Option<Cell>, Option<Cell>)>,
+	contents: Vec<(RuleCellFrom, RuleCellTo)>,
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
+pub enum RuleCellFrom {
+	/// matches anything
+	#[default]
+	Any,
+	/// matches one cell type
+	One(Cell),
+	/// matches anything defined in the group referenced by this index
+	Group(usize),
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
+pub enum RuleCellTo {
+	/// don't modify this cell
+	#[default]
+	None,
+	/// set to this cell
+	One(Cell),
+	/// randomly choose from the group
+	GroupRandom(usize),
+	/// copy the cell from the corresponding input position
+	Copy(usize),
 }
 
 impl SubRule {
@@ -41,36 +66,36 @@ impl SubRule {
 		Self {
 			width: 1,
 			height: 1,
-			contents: vec![(None, None)],
+			contents: vec![Default::default()],
 		}
 	}
 
-	fn get(&self, x: usize, y: usize) -> (Option<Cell>, Option<Cell>) {
+	fn get(&self, x: usize, y: usize) -> (RuleCellFrom, RuleCellTo) {
 		if x >= self.width || y >= self.height {
-			(None, None)
+			Default::default()
 		} else {
 			self.contents[x + self.width * y].clone()
 		}
 	}
 
-	fn get_mut(&mut self, x: usize, y: usize) -> &mut (Option<Cell>, Option<Cell>) {
+	fn get_mut(&mut self, x: usize, y: usize) -> &mut (RuleCellFrom, RuleCellTo) {
 		assert!(x < self.width || y < self.height);
 		&mut self.contents[x + self.width * y]
 	}
 
-	fn set_both(&mut self, x: usize, y: usize, cells: (Option<Cell>, Option<Cell>)) {
+	fn set_both(&mut self, x: usize, y: usize, cells: (RuleCellFrom, RuleCellTo)) {
 		if x < self.width && y < self.height {
 			self.contents[x + self.width * y] = cells;
 		}
 	}
 
-	fn set_from(&mut self, x: usize, y: usize, cell: Option<Cell>) {
+	fn set_from(&mut self, x: usize, y: usize, cell: RuleCellFrom) {
 		if x < self.width && y < self.height {
 			self.contents[x + self.width * y].0 = cell;
 		}
 	}
 
-	fn set_to(&mut self, x: usize, y: usize, cell: Option<Cell>) {
+	fn set_to(&mut self, x: usize, y: usize, cell: RuleCellTo) {
 		if x < self.width && y < self.height {
 			self.contents[x + self.width * y].1 = cell;
 		}
@@ -99,20 +124,20 @@ impl Rule {
 		}
 	}
 
-	pub fn get(&self, x: usize, y: usize) -> (Option<Cell>, Option<Cell>) {
+	pub fn get(&self, x: usize, y: usize) -> (RuleCellFrom, RuleCellTo) {
 		self.base.get(x, y)
 	}
 
-	pub fn get_mut(&mut self, x: usize, y: usize) -> &mut (Option<Cell>, Option<Cell>) {
+	pub fn get_mut(&mut self, x: usize, y: usize) -> &mut (RuleCellFrom, RuleCellTo) {
 		self.base.get_mut(x, y)
 	}
 
-	pub fn set_from(&mut self, x: usize, y: usize, cell: Option<Cell>) {
+	pub fn set_from(&mut self, x: usize, y: usize, cell: RuleCellFrom) {
 		self.base.set_from(x, y, cell);
 		self.generate_variants();
 	}
 
-	pub fn set_to(&mut self, x: usize, y: usize, cell: Option<Cell>) {
+	pub fn set_to(&mut self, x: usize, y: usize, cell: RuleCellTo) {
 		self.base.set_to(x, y, cell);
 		self.generate_variants();
 	}
@@ -133,7 +158,7 @@ impl Rule {
 		if new_width < 1 || new_height < 1 {
 			return;
 		}
-		let mut new_contents = vec![(None, None); new_width * new_height];
+		let mut new_contents = vec![Default::default(); new_width * new_height];
 
 		for nx in 0..new_width {
 			let oldx = nx.wrapping_add_signed(dx);
@@ -256,8 +281,8 @@ impl Dish {
 					width: 1,
 					height: 2,
 					contents: vec![
-						(Some(Cell(1)), Some(Cell(0))),
-						(Some(Cell(0)), Some(Cell(1))),
+						(RuleCellFrom::One(Cell(1)), RuleCellTo::One(Cell(0))),
+						(RuleCellFrom::One(Cell(0)), RuleCellTo::One(Cell(1))),
 					],
 				},
 				..Rule::new()
@@ -268,10 +293,10 @@ impl Dish {
 					width: 2,
 					height: 2,
 					contents: vec![
-						(Some(Cell(1)), Some(Cell(0))),
-						(None, None),
-						(Some(Cell(1)), None),
-						(Some(Cell(0)), Some(Cell(1))),
+						(RuleCellFrom::One(Cell(1)), RuleCellTo::One(Cell(0))),
+						(RuleCellFrom::Any, RuleCellTo::None),
+						(RuleCellFrom::One(Cell(1)), RuleCellTo::None),
+						(RuleCellFrom::One(Cell(0)), RuleCellTo::One(Cell(1))),
 					],
 				},
 				flip_h: true,
@@ -286,6 +311,7 @@ impl Dish {
 		Self {
 			chunk: Chunk::new().fill_random(),
 			rules: default_rules,
+			cell_groups: vec![vec![Cell(0), Cell(1)]],
 		}
 	}
 
@@ -333,12 +359,32 @@ impl Dish {
 
 		let width = variant.width;
 		let height = variant.height;
+		let mut old_state = Vec::new();
+		for dy in 0..height {
+			for dx in 0..width {
+				old_state.push(self.get_cell(dx, dy).unwrap());
+			}
+		}
+
 		for dx in 0..width {
 			for dy in 0..height {
-				let x = x + dx;
-				let y = y + dy;
-				if let Some(rule_cell) = variant.get(dx, dy).1 {
-					self.set_cell(x, y, rule_cell.clone());
+				let px = x + dx;
+				let py = y + dy;
+				match variant.get(dx, dy).1 {
+					RuleCellTo::One(rule_cell) => {
+						self.set_cell(px, py, rule_cell.clone());
+					}
+					RuleCellTo::GroupRandom(group_id) => {
+						let group = &self.cell_groups[group_id];
+						let i = random::<usize>() % group.len();
+						let cell = group[i];
+						self.set_cell(px, py, cell);
+					}
+					RuleCellTo::Copy(index) => {
+						let cell = old_state[index];
+						self.set_cell(px, py, cell);
+					}
+					RuleCellTo::None => (),
 				}
 			}
 		}
@@ -349,10 +395,21 @@ impl Dish {
 			for dy in 0..subrule.height {
 				let x = x + dx;
 				let y = y + dy;
-				if let Some(rule_cell) = subrule.get(dx, dy).0 {
-					if self.get_cell(x, y) != Some(rule_cell) {
-						return false;
+				let Some(cell) = self.get_cell(x, y) else {
+					return false;
+				};
+				match subrule.get(dx, dy).0 {
+					RuleCellFrom::One(rule_cell) => {
+						if cell != rule_cell {
+							return false;
+						}
 					}
+					RuleCellFrom::Group(group_id) => {
+						if !self.cell_groups[group_id].contains(&cell) {
+							return false;
+						}
+					}
+					RuleCellFrom::Any => (),
 				}
 			}
 		}

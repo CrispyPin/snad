@@ -10,11 +10,15 @@ use eframe::{
 	epaint::Hsva,
 	NativeOptions,
 };
+use egui::{
+	menu::{SubMenu, SubMenuButton},
+	popup, Layout, PointerButton,
+};
 use native_dialog::FileDialog;
 use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use petri::{Cell, Chunk, Dish, Rule, CHUNK_SIZE};
+use petri::{Cell, Chunk, Dish, Rule, RuleCellFrom, RuleCellTo, CHUNK_SIZE};
 use serde_json::{json, Value};
 
 fn main() {
@@ -45,7 +49,7 @@ impl UScope {
 	fn new(_cc: &eframe::CreationContext<'_>) -> Self {
 		Self {
 			dish: Dish::new(),
-			speed: 250,
+			speed: 500,
 			show_grid: false,
 			brush: Cell(1),
 			cell_types: vec![
@@ -134,12 +138,35 @@ impl eframe::App for UScope {
 			}
 			ui.separator();
 
+			ui.heading("Groups");
+			for group in &mut self.dish.cell_groups {
+				let (rect, _response) = ui.allocate_exact_size(Vec2::splat(CSIZE), Sense::click());
+				draw_group(ui, rect, group, &self.cell_types);
+				ui.menu_button("edit", |ui| {
+					for (i, celldata) in self.cell_types.iter().enumerate() {
+						let mut included = group.contains(&Cell(i as u16));
+						if ui.checkbox(&mut included, &celldata.name).changed() {
+							if included {
+								group.push(Cell(i as u16));
+							} else {
+								group.retain(|c| c.0 != i as u16);
+							}
+						}
+					}
+				});
+				// if response.clicked(){
+				// }
+			}
+			if ui.button("add group").clicked() {
+				self.dish.cell_groups.push(Vec::new());
+			}
+
 			ui.heading("Rules");
 			ScrollArea::vertical().show(ui, |ui| {
 				let mut to_remove = None;
 				for (i, rule) in self.dish.rules.iter_mut().enumerate() {
 					ui.separator();
-					rule_editor(ui, rule, &self.cell_types);
+					rule_editor(ui, rule, &self.cell_types, &self.dish.cell_groups);
 					if ui.button("delete").clicked() {
 						to_remove = Some(i);
 					}
@@ -189,7 +216,7 @@ fn paint_chunk(painter: Painter, chunk: &Chunk, cells: &[CellData], grid: bool) 
 
 const CSIZE: f32 = 24.;
 const OUTLINE: (f32, Color32) = (2., Color32::GRAY);
-fn rule_editor(ui: &mut Ui, rule: &mut Rule, cells: &[CellData]) {
+fn rule_editor(ui: &mut Ui, rule: &mut Rule, cells: &[CellData], groups: &[Vec<Cell>]) {
 	ui.checkbox(&mut rule.enabled, "enable rule");
 	ui.horizontal(|ui| {
 		ui.label("flip");
@@ -227,8 +254,10 @@ fn rule_editor(ui: &mut Ui, rule: &mut Rule, cells: &[CellData]) {
 	for x in 0..cells_x {
 		for y in 0..cells_y {
 			let (left, right) = rule.get_mut(x, y);
-			let changed_left = rule_cell_edit(ui, from_cells_rect.min, left, x, y, cells);
-			let changed_right = rule_cell_edit(ui, to_cells_rect.min, right, x, y, cells);
+			let changed_left =
+				rule_cell_edit_from(ui, from_cells_rect.min, left, x, y, cells, groups);
+			let changed_right =
+				rule_cell_edit_to(ui, to_cells_rect.min, right, x, y, cells, groups);
 			if changed_left || changed_right {
 				rule.generate_variants();
 			}
@@ -297,13 +326,14 @@ fn rule_editor(ui: &mut Ui, rule: &mut Rule, cells: &[CellData]) {
 	}
 }
 
-fn rule_cell_edit(
+fn rule_cell_edit_from(
 	ui: &mut Ui,
 	origin: Pos2,
-	rule: &mut Option<Cell>,
+	rule: &mut RuleCellFrom,
 	x: usize,
 	y: usize,
 	cells: &[CellData],
+	groups: &[Vec<Cell>],
 ) -> bool {
 	let mut changed = false;
 	let rect = Rect::from_min_size(
@@ -311,22 +341,132 @@ fn rule_cell_edit(
 		Vec2::splat(CSIZE),
 	);
 	let aabb = ui.allocate_rect(rect, Sense::click());
-	if let Some(cell) = rule {
-		let color = cells[cell.id()].color;
-		ui.painter()
-			.rect(rect.shrink(OUTLINE.0 / 2.), 0., color, OUTLINE);
-		if aabb.clicked() {
-			changed = true;
-			cell.0 += 1;
-			if cell.0 as usize == cells.len() {
-				*rule = None;
+	let cycle_colors = aabb.clicked_by(PointerButton::Primary);
+	let switch_type = aabb.clicked_by(PointerButton::Secondary);
+
+	// draw
+	match rule {
+		RuleCellFrom::Any => (),
+		RuleCellFrom::One(cell) => {
+			let color = cells[cell.id()].color;
+			ui.painter()
+				.rect(rect.shrink(OUTLINE.0 / 2.), 0., color, OUTLINE);
+		}
+		RuleCellFrom::Group(group_id) => {
+			let group = &groups[*group_id];
+			draw_group(ui, rect, group, cells);
+		}
+	}
+	// update
+	if cycle_colors {
+		match rule {
+			RuleCellFrom::Any => (),
+			RuleCellFrom::One(cell) => {
+				cell.0 += 1;
+				cell.0 %= cells.len() as u16;
+				changed = true;
+			}
+			RuleCellFrom::Group(group_id) => {
+				*group_id += 1;
+				*group_id %= groups.len();
+				changed = true;
 			}
 		}
-	} else if aabb.clicked() {
-		*rule = Some(Cell(0));
+	}
+	if switch_type {
 		changed = true;
+		match rule {
+			RuleCellFrom::Any => {
+				*rule = RuleCellFrom::One(Cell(0));
+			}
+			RuleCellFrom::One(_) => {
+				*rule = RuleCellFrom::Group(0);
+			}
+			RuleCellFrom::Group(_) => {
+				*rule = RuleCellFrom::Any;
+			}
+		}
 	}
 	changed
+}
+
+fn rule_cell_edit_to(
+	ui: &mut Ui,
+	origin: Pos2,
+	rule: &mut RuleCellTo,
+	x: usize,
+	y: usize,
+	cells: &[CellData],
+	groups: &[Vec<Cell>],
+) -> bool {
+	let mut changed = false;
+	let rect = Rect::from_min_size(
+		origin + Vec2::from((x as f32, y as f32)) * CSIZE,
+		Vec2::splat(CSIZE),
+	);
+	let aabb = ui.allocate_rect(rect, Sense::click());
+	let cycle_colors = aabb.clicked_by(PointerButton::Primary);
+	let switch_type = aabb.clicked_by(PointerButton::Secondary);
+
+	// draw
+	match rule {
+		RuleCellTo::None => (),
+		RuleCellTo::One(cell) => {
+			let color = cells[cell.id()].color;
+			ui.painter()
+				.rect(rect.shrink(OUTLINE.0 / 2.), 0., color, OUTLINE);
+		}
+		RuleCellTo::GroupRandom(group_id) => {
+			let group = &groups[*group_id];
+			draw_group(ui, rect, group, cells);
+		}
+		RuleCellTo::Copy(_) => todo!(),
+	}
+
+	if cycle_colors {
+		match rule {
+			RuleCellTo::None => (),
+			RuleCellTo::One(cell) => {
+				cell.0 += 1;
+				cell.0 %= cells.len() as u16;
+				changed = true;
+			}
+			RuleCellTo::GroupRandom(group_id) => {
+				*group_id += 1;
+				*group_id %= groups.len();
+				changed = true;
+			}
+			RuleCellTo::Copy(_) => todo!(),
+		}
+	}
+
+	if switch_type {
+		changed = true;
+		match rule {
+			RuleCellTo::None => {
+				*rule = RuleCellTo::One(Cell(0));
+			}
+			RuleCellTo::One(_) => {
+				*rule = RuleCellTo::GroupRandom(0);
+			}
+			RuleCellTo::GroupRandom(_) => {
+				*rule = RuleCellTo::None;
+			}
+			RuleCellTo::Copy(_) => todo!(),
+		}
+	}
+	changed
+}
+
+fn draw_group(ui: &mut Ui, rect: Rect, group: &[Cell], cells: &[CellData]) {
+	let group_size = group.len();
+	let radius_per_color = (CSIZE * 0.7) / (group_size as f32);
+	for (i, cell) in group.iter().enumerate() {
+		let color = cells[cell.id()].color;
+		let radius = radius_per_color * ((group_size - i) as f32);
+		ui.painter_at(rect)
+			.circle_filled(rect.center(), radius, color);
+	}
 }
 
 impl CellData {
