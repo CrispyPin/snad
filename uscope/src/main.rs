@@ -152,6 +152,9 @@ fn rule_editor(ui: &mut Ui, rule: &mut Rule, cells: &[CellData]) {
 			rule_cell_edit(ui, to_cells_rect.min, &mut rule.to, x, y, cells);
 		}
 	}
+
+	let delete_mode = ui.input(|i| i.modifiers.shift);
+
 	let mut resize_box = |x, y, w, h| {
 		let rect_a = Rect::from_min_size(Pos2::new(x, y), Vec2::new(w, h));
 		let a = ui.allocate_rect(rect_a, Sense::click());
@@ -159,7 +162,11 @@ fn rule_editor(ui: &mut Ui, rule: &mut Rule, cells: &[CellData]) {
 		let b = ui.allocate_rect(rect_b, Sense::click());
 		let result = a.union(b);
 		let color = if result.hovered() {
-			Color32::GRAY
+			if delete_mode {
+				Color32::RED
+			} else {
+				Color32::GRAY
+			}
 		} else {
 			Color32::DARK_GRAY
 		};
@@ -169,8 +176,11 @@ fn rule_editor(ui: &mut Ui, rule: &mut Rule, cells: &[CellData]) {
 		result.clicked()
 	};
 	if resize_box(bounds.min.x, bounds.min.y + margin, margin, patt_height) {
-		rule.from.extend_left();
-		rule.to.extend_left();
+		if delete_mode {
+			rule.resize(Rule::SHRINK_LEFT);
+		} else {
+			rule.resize(Rule::EXTEND_LEFT);
+		}
 	}
 	if resize_box(
 		from_cells_rect.max.x,
@@ -178,12 +188,18 @@ fn rule_editor(ui: &mut Ui, rule: &mut Rule, cells: &[CellData]) {
 		margin,
 		patt_height,
 	) {
-		rule.from.extend_right();
-		rule.to.extend_right();
+		if delete_mode {
+			rule.resize(Rule::SHRINK_RIGHT);
+		} else {
+			rule.resize(Rule::EXTEND_RIGHT);
+		}
 	}
 	if resize_box(bounds.min.x + margin, bounds.min.y, patt_width, margin) {
-		rule.from.extend_up();
-		rule.to.extend_up();
+		if delete_mode {
+			rule.resize(Rule::SHRINK_UP);
+		} else {
+			rule.resize(Rule::EXTEND_UP);
+		}
 	}
 	if resize_box(
 		bounds.min.x + margin,
@@ -191,8 +207,11 @@ fn rule_editor(ui: &mut Ui, rule: &mut Rule, cells: &[CellData]) {
 		patt_width,
 		margin,
 	) {
-		rule.from.extend_down();
-		rule.to.extend_down();
+		if delete_mode {
+			rule.resize(Rule::SHRINK_DOWN);
+		} else {
+			rule.resize(Rule::EXTEND_DOWN);
+		}
 	}
 }
 

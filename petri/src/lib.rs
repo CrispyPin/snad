@@ -26,13 +26,29 @@ pub struct Rule {
 	// rotate:
 }
 
+type ResizeParam = (isize, isize, isize, isize);
 impl Rule {
+	pub const EXTEND_LEFT: ResizeParam = (1, 0, -1, 0);
+	pub const EXTEND_RIGHT: ResizeParam = (1, 0, 0, 0);
+	pub const EXTEND_UP: ResizeParam = (0, 1, 0, -1);
+	pub const EXTEND_DOWN: ResizeParam = (0, 1, 0, 0);
+	pub const SHRINK_LEFT: ResizeParam = (-1, 0, 1, 0);
+	pub const SHRINK_RIGHT: ResizeParam = (-1, 0, 0, 0);
+	pub const SHRINK_UP: ResizeParam = (0, -1, 0, 1);
+	pub const SHRINK_DOWN: ResizeParam = (0, -1, 0, 0);
+
 	pub fn new() -> Self {
 		Self {
 			enabled: false,
 			from: RulePattern::new(),
 			to: RulePattern::new(),
 		}
+	}
+
+	pub fn resize(&mut self, params: ResizeParam) {
+		let (dw, dh, dx, dy) = params;
+		self.from.resize(dw, dh, dx, dy);
+		self.to.resize(dw, dh, dx, dy);
 	}
 }
 
@@ -226,42 +242,25 @@ impl RulePattern {
 		self.width
 	}
 
-	pub fn extend_left(&mut self) {
-		let new_width = self.width + 1;
-		let mut new_vec = vec![None; new_width * self.height];
-		for y in 0..self.height {
-			for x in 0..self.width {
-				new_vec[x + new_width * y + 1] = self.contents[x + self.width * y];
+	fn resize(&mut self, dw: isize, dh: isize, dx: isize, dy: isize) {
+		let new_width = self.width.saturating_add_signed(dw);
+		let new_height = self.height.saturating_add_signed(dh);
+		if new_width < 1 || new_height < 1 {
+			return;
+		}
+		let mut new_contents = vec![None; new_width * new_height];
+
+		for nx in 0..new_width {
+			let oldx = nx.wrapping_add_signed(dx);
+			for ny in 0..new_height {
+				let oldy = ny.wrapping_add_signed(dy);
+				new_contents[nx + new_width * ny] = self.get(oldx, oldy);
 			}
 		}
-		self.width += 1;
-		self.contents = new_vec;
-	}
 
-	pub fn extend_right(&mut self) {
-		let new_width = self.width + 1;
-		let mut new_vec = vec![None; new_width * self.height];
-		for y in 0..self.height {
-			for x in 0..self.width {
-				new_vec[x + new_width * y] = self.contents[x + self.width * y];
-			}
-		}
-		self.width += 1;
-		self.contents = new_vec;
-	}
-
-	pub fn extend_up(&mut self) {
-		for _ in 0..self.width {
-			self.contents.insert(0, None);
-		}
-		self.height += 1;
-	}
-
-	pub fn extend_down(&mut self) {
-		for _ in 0..self.width {
-			self.contents.push(None);
-		}
-		self.height += 1;
+		self.contents = new_contents;
+		self.height = new_height;
+		self.width = new_width;
 	}
 }
 
