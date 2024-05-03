@@ -125,6 +125,8 @@ const CSIZE: f32 = 24.;
 const OUTLINE: (f32, Color32) = (3., Color32::GRAY);
 fn rule_editor(ui: &mut Ui, rule: &mut Rule, cells: &[CellData]) {
 	ui.checkbox(&mut rule.enabled, "enable rule");
+	ui.checkbox(&mut rule.flip_h, "flip H");
+	ui.checkbox(&mut rule.flip_v, "flip V");
 
 	let cells_y = rule.from.height();
 	let cells_x = rule.from.width();

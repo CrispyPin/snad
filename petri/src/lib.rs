@@ -22,7 +22,8 @@ pub struct Rule {
 	pub to: RulePattern,
 	pub enabled: bool,
 	// probability: u8
-	// flip:
+	pub flip_h: bool,
+	pub flip_v: bool,
 	// rotate:
 }
 
@@ -42,6 +43,8 @@ impl Rule {
 			enabled: false,
 			from: RulePattern::new(),
 			to: RulePattern::new(),
+			flip_h: false,
+			flip_v: false,
 		}
 	}
 
@@ -100,6 +103,8 @@ impl Dish {
 						height: 2,
 						contents: vec![Some(Cell(0)), Some(Cell(1))],
 					},
+					flip_h: false,
+					flip_v: false,
 				},
 				Rule {
 					enabled: true,
@@ -113,19 +118,8 @@ impl Dish {
 						height: 2,
 						contents: vec![Some(Cell(0)), None, Some(Cell(1)), Some(Cell(1))],
 					},
-				},
-				Rule {
-					enabled: true,
-					from: RulePattern {
-						width: 2,
-						height: 2,
-						contents: vec![None, Some(Cell(1)), Some(Cell(0)), Some(Cell(1))],
-					},
-					to: RulePattern {
-						width: 2,
-						height: 2,
-						contents: vec![None, Some(Cell(0)), Some(Cell(1)), Some(Cell(1))],
-					},
+					flip_h: true,
+					flip_v: false,
 				},
 			],
 		}
@@ -268,5 +262,20 @@ impl Cell {
 	pub const EMPTY: Self = Cell(0);
 	pub fn id(&self) -> usize {
 		self.0 as usize
+	}
+}
+
+#[derive(Debug)]
+enum Dir {
+	Pos,
+	Neg,
+}
+
+impl Dir {
+	fn sign(&self) -> isize {
+		match self {
+			Dir::Pos => 1,
+			Dir::Neg => -1,
+		}
 	}
 }
