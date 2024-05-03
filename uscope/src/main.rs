@@ -143,19 +143,25 @@ impl eframe::App for UScope {
 				let (rect, _response) = ui.allocate_exact_size(Vec2::splat(CSIZE), Sense::click());
 				draw_group(ui, rect, group, &self.cell_types);
 				ui.menu_button("edit", |ui| {
+					let mut void = group.contains(&None);
+					if ui.checkbox(&mut void, "void").changed() {
+						if void {
+							group.push(None);
+						} else {
+							group.retain(|c| c.is_some());
+						}
+					}
 					for (i, celldata) in self.cell_types.iter().enumerate() {
-						let mut included = group.contains(&Cell(i as u16));
+						let mut included = group.contains(&Some(Cell(i as u16)));
 						if ui.checkbox(&mut included, &celldata.name).changed() {
 							if included {
-								group.push(Cell(i as u16));
+								group.push(Some(Cell(i as u16)));
 							} else {
-								group.retain(|c| c.0 != i as u16);
+								group.retain(|c| c != &Some(Cell(i as u16)));
 							}
 						}
 					}
 				});
-				// if response.clicked(){
-				// }
 			}
 			if ui.button("add group").clicked() {
 				self.dish.cell_groups.push(Vec::new());
@@ -218,7 +224,7 @@ const CSIZE: f32 = 24.;
 const RESIZE_BUTTON_WIDTH: f32 = 8.;
 
 const OUTLINE: (f32, Color32) = (2., Color32::GRAY);
-fn rule_editor(ui: &mut Ui, rule: &mut Rule, cells: &[CellData], groups: &[Vec<Cell>]) {
+fn rule_editor(ui: &mut Ui, rule: &mut Rule, cells: &[CellData], groups: &[Vec<Option<Cell>>]) {
 	ui.checkbox(&mut rule.enabled, "enable rule");
 	ui.horizontal(|ui| {
 		ui.label("flip");
@@ -359,7 +365,7 @@ fn rule_cell_edit_from(
 	x: usize,
 	y: usize,
 	cells: &[CellData],
-	groups: &[Vec<Cell>],
+	groups: &[Vec<Option<Cell>>],
 ) -> bool {
 	let mut changed = false;
 	let rect = Rect::from_min_size(
@@ -422,7 +428,7 @@ fn rule_cell_edit_to(
 	rule: &mut RuleCellTo,
 	(x, y): (usize, usize),
 	cells: &[CellData],
-	groups: &[Vec<Cell>],
+	groups: &[Vec<Option<Cell>>],
 	(rule_width, rule_height): (usize, usize),
 	overlay_lines: &mut Vec<(Pos2, Pos2)>,
 ) -> bool {
@@ -498,14 +504,18 @@ fn rule_cell_edit_to(
 	changed
 }
 
-fn draw_group(ui: &mut Ui, rect: Rect, group: &[Cell], cells: &[CellData]) {
+fn draw_group(ui: &mut Ui, rect: Rect, group: &[Option<Cell>], cells: &[CellData]) {
 	let group_size = group.len();
 	let radius_per_color = (CSIZE * 0.7) / (group_size as f32);
-	for (i, cell) in group.iter().enumerate() {
+	for (i, cell) in group.iter().flatten().enumerate() {
 		let color = cells[cell.id()].color;
 		let radius = radius_per_color * ((group_size - i) as f32);
 		ui.painter_at(rect)
 			.circle_filled(rect.center(), radius, color);
+	}
+	if group.contains(&None) {
+		ui.painter_at(rect)
+			.line_segment([rect.min, rect.max], (1., Color32::WHITE));
 	}
 }
 

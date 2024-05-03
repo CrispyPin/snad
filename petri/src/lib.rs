@@ -10,7 +10,7 @@ pub struct Cell(pub u16);
 pub struct Dish {
 	pub chunk: Chunk,
 	pub rules: Vec<Rule>,
-	pub cell_groups: Vec<Vec<Cell>>,
+	pub cell_groups: Vec<Vec<Option<Cell>>>,
 }
 
 #[derive(Debug)]
@@ -311,7 +311,7 @@ impl Dish {
 		Self {
 			chunk: Chunk::new().fill_random(),
 			rules: default_rules,
-			cell_groups: vec![vec![Cell(0), Cell(1)]],
+			cell_groups: vec![vec![None, Some(Cell(1))]],
 		}
 	}
 
@@ -325,8 +325,6 @@ impl Dish {
 		if self.rules.is_empty() {
 			return;
 		}
-		let x = random::<usize>() % CHUNK_SIZE;
-		let y = random::<usize>() % CHUNK_SIZE;
 		let enabled_rules = self
 			.rules
 			.iter()
@@ -338,38 +336,39 @@ impl Dish {
 		}
 		let rule = random::<usize>() % enabled_rules.len();
 		let rule = enabled_rules[rule];
-		self.fire_rule(rule, x, y);
+		self.fire_rule(rule);
 	}
 
-	fn fire_rule(&mut self, rule_index: usize, x: usize, y: usize) {
+	fn fire_rule(&mut self, rule_index: usize) {
 		let rule = &self.rules[rule_index];
-		// find matching variants
-		let mut matching_variants = Vec::new();
-		for (i, v) in rule.variants.iter().enumerate() {
-			if self.subrule_matches(x, y, v) {
-				matching_variants.push(i);
-			}
-		}
-		if matching_variants.is_empty() {
+		let variant_index = random::<usize>() % rule.variants.len();
+		let variant = &rule.variants[variant_index].clone();
+		let border_x = variant.width - 1;
+		let border_y = variant.height - 1;
+		let x = ((random::<usize>() % (CHUNK_SIZE + border_x)) as isize)
+			.wrapping_sub_unsigned(border_x);
+		let y = ((random::<usize>() % (CHUNK_SIZE + border_y)) as isize)
+			.wrapping_sub_unsigned(border_y);
+
+		if !self.subrule_matches(x, y, variant) {
 			return;
 		}
-
-		let variant_index = random::<usize>() % matching_variants.len();
-		let variant = rule.variants[matching_variants[variant_index]].clone();
 
 		let width = variant.width;
 		let height = variant.height;
 		let mut old_state = Vec::new();
 		for dy in 0..height {
 			for dx in 0..width {
-				old_state.push(self.get_cell(x + dx, y + dy).unwrap());
+				old_state.push(
+					self.get_cell((x as usize).wrapping_add(dx), (y as usize).wrapping_add(dy)),
+				);
 			}
 		}
 
 		for dx in 0..width {
 			for dy in 0..height {
-				let px = x + dx;
-				let py = y + dy;
+				let px = x.wrapping_add_unsigned(dx) as usize;
+				let py = y.wrapping_add_unsigned(dy) as usize;
 				match variant.get(dx, dy).1 {
 					RuleCellTo::One(rule_cell) => {
 						self.set_cell(px, py, rule_cell.clone());
@@ -378,11 +377,16 @@ impl Dish {
 						let group = &self.cell_groups[group_id];
 						let i = random::<usize>() % group.len();
 						let cell = group[i];
-						self.set_cell(px, py, cell);
+						if let Some(cell) = cell {
+							self.set_cell(px, py, cell);
+						}
 					}
 					RuleCellTo::Copy(index) => {
 						let cell = old_state[index];
-						self.set_cell(px, py, cell);
+						if let Some(cell) = cell {
+							// if the copy source is outside the world, do nothing
+							self.set_cell(px, py, cell);
+						}
 					}
 					RuleCellTo::None => (),
 				}
@@ -390,17 +394,15 @@ impl Dish {
 		}
 	}
 
-	fn subrule_matches(&self, x: usize, y: usize, subrule: &SubRule) -> bool {
+	fn subrule_matches(&self, x: isize, y: isize, subrule: &SubRule) -> bool {
 		for dx in 0..subrule.width {
 			for dy in 0..subrule.height {
-				let x = x + dx;
-				let y = y + dy;
-				let Some(cell) = self.get_cell(x, y) else {
-					return false;
-				};
+				let x = x.wrapping_add_unsigned(dx) as usize;
+				let y = y.wrapping_add_unsigned(dy) as usize;
+				let cell = self.get_cell(x, y);
 				match subrule.get(dx, dy).0 {
 					RuleCellFrom::One(rule_cell) => {
-						if cell != rule_cell {
+						if cell != Some(rule_cell) {
 							return false;
 						}
 					}
