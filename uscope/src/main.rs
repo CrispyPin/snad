@@ -58,6 +58,9 @@ impl eframe::App for UScope {
 			ui.label("speed");
 			ui.add(Slider::new(&mut self.speed, 0..=5000));
 			ui.checkbox(&mut self.show_grid, "show grid");
+			if ui.button("fill").clicked() {
+				self.dish.chunk.contents.fill([self.brush; CHUNK_SIZE]);
+			}
 			ui.separator();
 
 			ui.heading("Cells");
