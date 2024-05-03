@@ -1,5 +1,7 @@
 use eframe::{
-	egui::{CentralPanel, Color32, Painter, Pos2, Rect, Sense, SidePanel, Slider, Ui, Vec2},
+	egui::{
+		CentralPanel, Color32, Painter, Pos2, Rect, ScrollArea, Sense, SidePanel, Slider, Ui, Vec2,
+	},
 	epaint::Hsva,
 	NativeOptions,
 };
@@ -20,6 +22,7 @@ struct UScope {
 	dish: Dish,
 	brush: Cell,
 	speed: usize,
+	show_grid: bool,
 	celltypes: Vec<CellData>,
 }
 
@@ -34,6 +37,7 @@ impl UScope {
 		Self {
 			dish: Dish::new(),
 			speed: 250,
+			show_grid: false,
 			brush: Cell(1),
 			celltypes: vec![
 				CellData::new("air", 0, 0, 0),
@@ -53,6 +57,7 @@ impl eframe::App for UScope {
 			ui.heading("Simulation");
 			ui.label("speed");
 			ui.add(Slider::new(&mut self.speed, 0..=5000));
+			ui.checkbox(&mut self.show_grid, "show grid");
 			ui.separator();
 
 			ui.heading("Cells");
@@ -76,25 +81,28 @@ impl eframe::App for UScope {
 			ui.separator();
 
 			ui.heading("Rules");
-			let mut to_remove = None;
-			for (i, rule) in self.dish.rules.iter_mut().enumerate() {
-				rule_editor(ui, rule, &self.celltypes);
-				if ui.button("delete").clicked() {
-					to_remove = Some(i);
+			ScrollArea::vertical().show(ui, |ui| {
+				let mut to_remove = None;
+				for (i, rule) in self.dish.rules.iter_mut().enumerate() {
+					ui.separator();
+					rule_editor(ui, rule, &self.celltypes);
+					if ui.button("delete").clicked() {
+						to_remove = Some(i);
+					}
+				}
+				if let Some(i) = to_remove {
+					self.dish.rules.remove(i);
 				}
 				ui.separator();
-			}
-			if let Some(i) = to_remove {
-				self.dish.rules.remove(i);
-			}
-			if ui.button("add rule").clicked() {
-				self.dish.rules.push(Rule::new());
-			}
+				if ui.button("add rule").clicked() {
+					self.dish.rules.push(Rule::new());
+				}
+			});
 		});
 		CentralPanel::default().show(ctx, |ui| {
 			let bounds = ui.available_rect_before_wrap();
 			let painter = ui.painter_at(bounds);
-			paint_chunk(painter, &self.dish.chunk, &self.celltypes);
+			paint_chunk(painter, &self.dish.chunk, &self.celltypes, self.show_grid);
 
 			let rect = ui.allocate_rect(bounds, Sense::click_and_drag());
 			if let Some(pos) = rect.interact_pointer_pos() {
@@ -108,7 +116,7 @@ impl eframe::App for UScope {
 }
 
 const GRID_SIZE: f32 = 16.;
-fn paint_chunk(painter: Painter, chunk: &Chunk, cells: &[CellData]) {
+fn paint_chunk(painter: Painter, chunk: &Chunk, cells: &[CellData], grid: bool) {
 	let bounds = painter.clip_rect();
 	for x in 0..CHUNK_SIZE {
 		for y in 0..CHUNK_SIZE {
@@ -116,7 +124,11 @@ fn paint_chunk(painter: Painter, chunk: &Chunk, cells: &[CellData]) {
 			let corner = bounds.min + (Vec2::from((x as f32, y as f32)) * GRID_SIZE);
 			let rect = Rect::from_min_size(corner, Vec2::splat(GRID_SIZE));
 			let color = cells[cell.id()].color;
-			painter.rect(rect, 0., color, (1., Color32::GRAY));
+			if grid {
+				painter.rect(rect, 0., color, (1., Color32::GRAY));
+			} else {
+				painter.rect_filled(rect, 0., color);
+			}
 		}
 	}
 }
@@ -125,12 +137,15 @@ const CSIZE: f32 = 24.;
 const OUTLINE: (f32, Color32) = (2., Color32::GRAY);
 fn rule_editor(ui: &mut Ui, rule: &mut Rule, cells: &[CellData]) {
 	ui.checkbox(&mut rule.enabled, "enable rule");
-	if ui.checkbox(&mut rule.flip_h, "flip H").changed() {
-		rule.generate_variants();
-	}
-	if ui.checkbox(&mut rule.flip_v, "flip V").changed() {
-		rule.generate_variants();
-	}
+	ui.horizontal(|ui| {
+		ui.label("flip");
+		if ui.checkbox(&mut rule.flip_h, "H").changed() {
+			rule.generate_variants();
+		}
+		if ui.checkbox(&mut rule.flip_v, "V").changed() {
+			rule.generate_variants();
+		}
+	});
 	if ui.checkbox(&mut rule.rotate, "rotate").changed() {
 		rule.generate_variants();
 	}
