@@ -131,6 +131,9 @@ fn rule_editor(ui: &mut Ui, rule: &mut Rule, cells: &[CellData]) {
 	if ui.checkbox(&mut rule.flip_v, "flip V").changed() {
 		rule.generate_variants();
 	}
+	if ui.checkbox(&mut rule.rotate, "rotate").changed() {
+		rule.generate_variants();
+	}
 
 	let cells_y = rule.height();
 	let cells_x = rule.width();

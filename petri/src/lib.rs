@@ -24,7 +24,7 @@ pub struct Rule {
 	// probability: u8
 	pub flip_h: bool,
 	pub flip_v: bool,
-	// rotate:
+	pub rotate: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -93,6 +93,7 @@ impl Rule {
 			variants: Vec::new(),
 			flip_h: false,
 			flip_v: false,
+			rotate: false,
 		}
 	}
 
@@ -171,7 +172,7 @@ impl Rule {
 					}
 				}
 				new
-			})
+			});
 		}
 		if self.flip_v {
 			transform_variants(&mut self.variants, |b| {
@@ -179,6 +180,32 @@ impl Rule {
 				for y in 0..new.height {
 					for x in 0..new.width {
 						let old = b.get(x, new.height - y - 1);
+						new.set_both(x, y, old);
+					}
+				}
+				new
+			});
+		}
+		if self.rotate {
+			// 180° rotations (same as flipping x and y)
+			transform_variants(&mut self.variants, |b| {
+				let mut new = b.clone();
+				for y in 0..new.height {
+					for x in 0..new.width {
+						let old = b.get(new.width - x - 1, new.height - y - 1);
+						new.set_both(x, y, old);
+					}
+				}
+				new
+			});
+			// 90° rotations
+			transform_variants(&mut self.variants, |b| {
+				let mut new = b.clone();
+				new.height = b.width;
+				new.width = b.height;
+				for y in 0..new.height {
+					for x in 0..new.width {
+						let old = b.get(y, x);
 						new.set_both(x, y, old);
 					}
 				}
