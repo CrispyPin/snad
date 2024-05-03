@@ -1,3 +1,8 @@
+use std::{
+	fs::{self, File},
+	io::Write,
+};
+
 use eframe::{
 	egui::{
 		CentralPanel, Color32, Painter, Pos2, Rect, ScrollArea, Sense, SidePanel, Slider, Ui, Vec2,
@@ -5,12 +10,16 @@ use eframe::{
 	epaint::Hsva,
 	NativeOptions,
 };
-use petri::{Cell, Chunk, Dish, Rule, CHUNK_SIZE};
+use native_dialog::FileDialog;
 use rand::prelude::*;
+use serde::{Deserialize, Serialize};
+
+use petri::{Cell, Chunk, Dish, Rule, CHUNK_SIZE};
+use serde_json::{json, Value};
 
 fn main() {
 	eframe::run_native(
-		"V3 World Editor",
+		"µscope",
 		NativeOptions::default(),
 		Box::new(|_cc| Box::new(UScope::new(_cc))),
 	)
@@ -23,10 +32,10 @@ struct UScope {
 	brush: Cell,
 	speed: usize,
 	show_grid: bool,
-	celltypes: Vec<CellData>,
+	cell_types: Vec<CellData>,
 }
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Serialize, Deserialize)]
 pub struct CellData {
 	name: String,
 	color: Color32,
@@ -39,11 +48,45 @@ impl UScope {
 			speed: 250,
 			show_grid: false,
 			brush: Cell(1),
-			celltypes: vec![
+			cell_types: vec![
 				CellData::new("air", 0, 0, 0),
 				CellData::new("pink_sand", 255, 147, 219),
 			],
 		}
+	}
+
+	fn save_universe(&self) -> Option<()> {
+		if let Ok(Some(path)) = FileDialog::new()
+			.set_filename("universe_1.json")
+			.add_filter("JSON", &["json"])
+			.show_save_single_file()
+		{
+			let out = json!({
+				"cell_types": self.cell_types,
+				"rules": self.dish.rules,
+			});
+			let out = serde_json::to_string(&out).ok()?;
+			let mut file = File::create(path).ok()?;
+			file.write_all(out.as_bytes()).ok()?;
+		}
+		Some(())
+	}
+
+	fn open_universe(&mut self) -> Option<()> {
+		if let Ok(Some(path)) = FileDialog::new()
+			.set_filename("universe_1.json")
+			.add_filter("JSON", &["json"])
+			.show_open_single_file()
+		{
+			let s = fs::read_to_string(path).ok()?;
+			let data: Value = serde_json::from_str(&s).ok()?;
+			let cell_types = serde_json::from_value(data["cell_types"].clone()).ok()?;
+			let rules = serde_json::from_value(data["rules"].clone()).ok()?;
+			self.cell_types = cell_types;
+			self.dish.rules = rules;
+			self.dish.update_rules();
+		}
+		Some(())
 	}
 }
 
@@ -58,13 +101,18 @@ impl eframe::App for UScope {
 			ui.label("speed");
 			ui.add(Slider::new(&mut self.speed, 0..=5000));
 			ui.checkbox(&mut self.show_grid, "show grid");
-			if ui.button("fill").clicked() {
-				self.dish.chunk.contents.fill([self.brush; CHUNK_SIZE]);
-			}
+			ui.horizontal(|ui| {
+				if ui.button("Save").clicked() {
+					self.save_universe();
+				}
+				if ui.button("Open").clicked() {
+					self.open_universe();
+				}
+			});
 			ui.separator();
 
 			ui.heading("Cells");
-			for (i, cell) in self.celltypes.iter_mut().enumerate() {
+			for (i, cell) in self.cell_types.iter_mut().enumerate() {
 				ui.horizontal(|ui| {
 					ui.set_width(120.);
 					ui.radio_value(&mut self.brush.0, i as u16, "");
@@ -78,8 +126,11 @@ impl eframe::App for UScope {
 				let s = random::<f32>() * 0.5 + 0.5;
 				let v = random::<f32>() * 0.5 + 0.5;
 				let color = Hsva::new(h, s, v, 1.).into();
-				let name = format!("cell #{}", self.celltypes.len());
-				self.celltypes.push(CellData { name, color })
+				let name = format!("cell #{}", self.cell_types.len());
+				self.cell_types.push(CellData { name, color })
+			}
+			if ui.button("fill").clicked() {
+				self.dish.chunk.contents.fill([self.brush; CHUNK_SIZE]);
 			}
 			ui.separator();
 
@@ -88,7 +139,7 @@ impl eframe::App for UScope {
 				let mut to_remove = None;
 				for (i, rule) in self.dish.rules.iter_mut().enumerate() {
 					ui.separator();
-					rule_editor(ui, rule, &self.celltypes);
+					rule_editor(ui, rule, &self.cell_types);
 					if ui.button("delete").clicked() {
 						to_remove = Some(i);
 					}
@@ -105,7 +156,7 @@ impl eframe::App for UScope {
 		CentralPanel::default().show(ctx, |ui| {
 			let bounds = ui.available_rect_before_wrap();
 			let painter = ui.painter_at(bounds);
-			paint_chunk(painter, &self.dish.chunk, &self.celltypes, self.show_grid);
+			paint_chunk(painter, &self.dish.chunk, &self.cell_types, self.show_grid);
 
 			let rect = ui.allocate_rect(bounds, Sense::click_and_drag());
 			if let Some(pos) = rect.interact_pointer_pos() {

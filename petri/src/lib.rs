@@ -1,8 +1,9 @@
 use rand::prelude::*;
+use serde::{Deserialize, Serialize};
 
 pub const CHUNK_SIZE: usize = 32;
 
-#[derive(Default, Debug, PartialEq, Clone, Copy)]
+#[derive(Default, Debug, PartialEq, Clone, Copy, Serialize, Deserialize)]
 pub struct Cell(pub u16);
 
 #[derive(Debug)]
@@ -16,9 +17,10 @@ pub struct Chunk {
 	pub contents: Box<[[Cell; CHUNK_SIZE]; CHUNK_SIZE]>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Rule {
 	base: SubRule,
+	#[serde(skip)]
 	variants: Vec<SubRule>,
 	pub enabled: bool,
 	// probability: u8
@@ -27,7 +29,7 @@ pub struct Rule {
 	pub rotate: bool,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 struct SubRule {
 	width: usize,
 	height: usize,
@@ -284,6 +286,12 @@ impl Dish {
 		Self {
 			chunk: Chunk::new().fill_random(),
 			rules: default_rules,
+		}
+	}
+
+	pub fn update_rules(&mut self) {
+		for rule in &mut self.rules {
+			rule.generate_variants();
 		}
 	}
 

@@ -7,5 +7,9 @@ edition = "2021"
 
 [dependencies]
 petri = { path = "../petri" }
-eframe = "0.27.2"
+eframe = "0.27"
+egui = { version = "*", features = ["serde"] }
 rand = "0.8.5"
+serde = "1.0.200"
+serde_json = "1.0.116"
+native-dialog = "0.6.4"
