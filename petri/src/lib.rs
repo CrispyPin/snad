@@ -27,8 +27,8 @@ pub struct Rule {
 	variants: Vec<SubRule>,
 	pub enabled: bool,
 	// probability: u8
-	pub flip_h: bool,
-	pub flip_v: bool,
+	pub flip_x: bool,
+	pub flip_y: bool,
 	pub rotate: bool,
 }
 
@@ -121,8 +121,8 @@ impl Rule {
 			enabled: false,
 			base: SubRule::new(),
 			variants: vec![SubRule::new()],
-			flip_h: false,
-			flip_v: false,
+			flip_x: false,
+			flip_y: false,
 			rotate: false,
 		}
 	}
@@ -192,7 +192,7 @@ impl Rule {
 			variants.extend_from_slice(&new);
 		}
 
-		if self.flip_h {
+		if self.flip_x {
 			transform_variants(&mut self.variants, |b| {
 				let mut new = b.clone();
 				for y in 0..new.height {
@@ -204,7 +204,7 @@ impl Rule {
 				new
 			});
 		}
-		if self.flip_v {
+		if self.flip_y {
 			transform_variants(&mut self.variants, |b| {
 				let mut new = b.clone();
 				for y in 0..new.height {
@@ -302,7 +302,7 @@ impl Dish {
 						(RuleCellFrom::One(Cell(0)), RuleCellTo::One(Cell(1))),
 					],
 				},
-				flip_h: true,
+				flip_x: true,
 				..Rule::new()
 			},
 		];

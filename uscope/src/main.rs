@@ -10,7 +10,7 @@ use eframe::{
 	epaint::Hsva,
 	NativeOptions,
 };
-use egui::PointerButton;
+use egui::{collapsing_header::CollapsingState, PointerButton};
 use native_dialog::FileDialog;
 use rand::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -176,16 +176,16 @@ impl eframe::App for UScope {
 					let mut to_remove = None;
 					let mut to_clone = None;
 					for (i, rule) in self.dish.rules.iter_mut().enumerate() {
-						ui.separator();
-						rule_editor(ui, rule, &self.cell_types, &self.dish.cell_groups);
-						ui.horizontal(|ui| {
-							if ui.button("delete").clicked() {
-								to_remove = Some(i);
-							}
-							if ui.button("copy").clicked() {
-								to_clone = Some(i);
-							}
-						});
+						// ui.separator();
+						rule_editor(
+							ui,
+							rule,
+							i,
+							&self.cell_types,
+							&self.dish.cell_groups,
+							&mut to_remove,
+							&mut to_clone,
+						);
 					}
 					if let Some(i) = to_remove {
 						self.dish.rules.remove(i);
@@ -246,138 +246,158 @@ const CSIZE: f32 = 24.;
 const RESIZE_BUTTON_WIDTH: f32 = 8.;
 
 const OUTLINE: (f32, Color32) = (2., Color32::GRAY);
-fn rule_editor(ui: &mut Ui, rule: &mut Rule, cells: &[CellData], groups: &[Vec<Option<Cell>>]) {
-	ui.checkbox(&mut rule.enabled, "enable rule");
-	ui.horizontal(|ui| {
-		ui.label("flip");
-		if ui.checkbox(&mut rule.flip_h, "H").changed() {
-			rule.generate_variants();
-		}
-		if ui.checkbox(&mut rule.flip_v, "V").changed() {
-			rule.generate_variants();
-		}
-	});
-	if ui.checkbox(&mut rule.rotate, "rotate").changed() {
-		rule.generate_variants();
-	}
-
-	let cells_y = rule.height();
-	let cells_x = rule.width();
-	let patt_width = CSIZE * cells_x as f32;
-	let patt_height = CSIZE * cells_y as f32;
-
-	let (_, bounds) = ui.allocate_space(Vec2::new(
-		patt_width * 2. + RESIZE_BUTTON_WIDTH * 4. + CSIZE,
-		patt_height + RESIZE_BUTTON_WIDTH * 2.,
-	));
-
-	let from_cells_rect = Rect::from_min_size(
-		bounds.min + Vec2::splat(RESIZE_BUTTON_WIDTH),
-		Vec2::new(patt_width, patt_height),
-	);
-	let to_cells_rect = Rect::from_min_size(
-		bounds.min
-			+ Vec2::splat(RESIZE_BUTTON_WIDTH)
-			+ Vec2::X * (patt_width + RESIZE_BUTTON_WIDTH * 2. + CSIZE),
-		Vec2::new(patt_width, patt_height),
-	);
-
-	let mut overlay_lines = Vec::new();
-	for x in 0..cells_x {
-		for y in 0..cells_y {
-			let (left, right) = rule.get_mut(x, y);
-			let changed_left =
-				rule_cell_edit_from(ui, from_cells_rect.min, left, x, y, cells, groups);
-			let changed_right = rule_cell_edit_to(
-				ui,
-				to_cells_rect.min,
-				right,
-				(x, y),
-				cells,
-				groups,
-				(cells_x, cells_y),
-				&mut overlay_lines,
-			);
-			if changed_left || changed_right {
+fn rule_editor(
+	ui: &mut Ui,
+	rule: &mut Rule,
+	index: usize,
+	cells: &[CellData],
+	groups: &[Vec<Option<Cell>>],
+	to_remove: &mut Option<usize>,
+	to_clone: &mut Option<usize>,
+) {
+	let id = ui.make_persistent_id(format!("rule {index}"));
+	CollapsingState::load_with_default_open(ui.ctx(), id, true)
+		.show_header(ui, |ui| {
+			ui.checkbox(&mut rule.enabled, &rule.name);
+			if ui.button("delete").clicked() {
+				*to_remove = Some(index);
+			}
+			if ui.button("copy").clicked() {
+				*to_clone = Some(index);
+			}
+		})
+		.body(|ui| {
+			ui.text_edit_singleline(&mut rule.name);
+			ui.horizontal(|ui| {
+				if ui.checkbox(&mut rule.flip_x, "flip X").changed() {
+					rule.generate_variants();
+				}
+				if ui.checkbox(&mut rule.flip_y, "flip Y").changed() {
+					rule.generate_variants();
+				}
+			});
+			if ui.checkbox(&mut rule.rotate, "rotate").changed() {
 				rule.generate_variants();
 			}
-		}
-	}
 
-	let delete_mode = ui.input(|i| i.modifiers.shift);
+			let cells_y = rule.height();
+			let cells_x = rule.width();
+			let patt_width = CSIZE * cells_x as f32;
+			let patt_height = CSIZE * cells_y as f32;
 
-	let mut resize_box = |x, y, w, h| {
-		let rect_a = Rect::from_min_size(Pos2::new(x, y), Vec2::new(w, h));
-		let a = ui.allocate_rect(rect_a, Sense::click());
-		let rect_b = rect_a.translate(to_cells_rect.min - from_cells_rect.min);
-		let b = ui.allocate_rect(rect_b, Sense::click());
-		let result = a.union(b);
-		let color = if result.hovered() {
-			if delete_mode {
-				Color32::RED
-			} else {
-				Color32::GRAY
+			let (_, bounds) = ui.allocate_space(Vec2::new(
+				patt_width * 2. + RESIZE_BUTTON_WIDTH * 4. + CSIZE,
+				patt_height + RESIZE_BUTTON_WIDTH * 2.,
+			));
+
+			let from_cells_rect = Rect::from_min_size(
+				bounds.min + Vec2::splat(RESIZE_BUTTON_WIDTH),
+				Vec2::new(patt_width, patt_height),
+			);
+			let to_cells_rect = Rect::from_min_size(
+				bounds.min
+					+ Vec2::splat(RESIZE_BUTTON_WIDTH)
+					+ Vec2::X * (patt_width + RESIZE_BUTTON_WIDTH * 2. + CSIZE),
+				Vec2::new(patt_width, patt_height),
+			);
+
+			let mut overlay_lines = Vec::new();
+			for x in 0..cells_x {
+				for y in 0..cells_y {
+					let (left, right) = rule.get_mut(x, y);
+					let changed_left =
+						rule_cell_edit_from(ui, from_cells_rect.min, left, x, y, cells, groups);
+					let changed_right = rule_cell_edit_to(
+						ui,
+						to_cells_rect.min,
+						right,
+						(x, y),
+						cells,
+						groups,
+						(cells_x, cells_y),
+						&mut overlay_lines,
+					);
+					if changed_left || changed_right {
+						rule.generate_variants();
+					}
+				}
 			}
-		} else {
-			Color32::DARK_GRAY
-		};
-		ui.painter_at(bounds).rect_filled(rect_a, 0., color);
-		ui.painter_at(bounds).rect_filled(rect_b, 0., color);
 
-		result.clicked()
-	};
-	if resize_box(
-		bounds.min.x,
-		bounds.min.y + RESIZE_BUTTON_WIDTH,
-		RESIZE_BUTTON_WIDTH,
-		patt_height,
-	) {
-		if delete_mode {
-			rule.resize(Rule::SHRINK_LEFT);
-		} else {
-			rule.resize(Rule::EXTEND_LEFT);
-		}
-	}
-	if resize_box(
-		from_cells_rect.max.x,
-		bounds.min.y + RESIZE_BUTTON_WIDTH,
-		RESIZE_BUTTON_WIDTH,
-		patt_height,
-	) {
-		if delete_mode {
-			rule.resize(Rule::SHRINK_RIGHT);
-		} else {
-			rule.resize(Rule::EXTEND_RIGHT);
-		}
-	}
-	if resize_box(
-		bounds.min.x + RESIZE_BUTTON_WIDTH,
-		bounds.min.y,
-		patt_width,
-		RESIZE_BUTTON_WIDTH,
-	) {
-		if delete_mode {
-			rule.resize(Rule::SHRINK_UP);
-		} else {
-			rule.resize(Rule::EXTEND_UP);
-		}
-	}
-	if resize_box(
-		bounds.min.x + RESIZE_BUTTON_WIDTH,
-		bounds.max.y - RESIZE_BUTTON_WIDTH,
-		patt_width,
-		RESIZE_BUTTON_WIDTH,
-	) {
-		if delete_mode {
-			rule.resize(Rule::SHRINK_DOWN);
-		} else {
-			rule.resize(Rule::EXTEND_DOWN);
-		}
-	}
+			let delete_mode = ui.input(|i| i.modifiers.shift);
 
-	for (a, b) in overlay_lines {
-		ui.painter().line_segment([a, b], (2., Color32::WHITE));
-	}
+			let mut resize_box = |x, y, w, h| {
+				let rect_a = Rect::from_min_size(Pos2::new(x, y), Vec2::new(w, h));
+				let a = ui.allocate_rect(rect_a, Sense::click());
+				let rect_b = rect_a.translate(to_cells_rect.min - from_cells_rect.min);
+				let b = ui.allocate_rect(rect_b, Sense::click());
+				let result = a.union(b);
+				let color = if result.hovered() {
+					if delete_mode {
+						Color32::RED
+					} else {
+						Color32::GRAY
+					}
+				} else {
+					Color32::DARK_GRAY
+				};
+				ui.painter_at(bounds).rect_filled(rect_a, 0., color);
+				ui.painter_at(bounds).rect_filled(rect_b, 0., color);
+
+				result.clicked()
+			};
+			if resize_box(
+				bounds.min.x,
+				bounds.min.y + RESIZE_BUTTON_WIDTH,
+				RESIZE_BUTTON_WIDTH,
+				patt_height,
+			) {
+				if delete_mode {
+					rule.resize(Rule::SHRINK_LEFT);
+				} else {
+					rule.resize(Rule::EXTEND_LEFT);
+				}
+			}
+			if resize_box(
+				from_cells_rect.max.x,
+				bounds.min.y + RESIZE_BUTTON_WIDTH,
+				RESIZE_BUTTON_WIDTH,
+				patt_height,
+			) {
+				if delete_mode {
+					rule.resize(Rule::SHRINK_RIGHT);
+				} else {
+					rule.resize(Rule::EXTEND_RIGHT);
+				}
+			}
+			if resize_box(
+				bounds.min.x + RESIZE_BUTTON_WIDTH,
+				bounds.min.y,
+				patt_width,
+				RESIZE_BUTTON_WIDTH,
+			) {
+				if delete_mode {
+					rule.resize(Rule::SHRINK_UP);
+				} else {
+					rule.resize(Rule::EXTEND_UP);
+				}
+			}
+			if resize_box(
+				bounds.min.x + RESIZE_BUTTON_WIDTH,
+				bounds.max.y - RESIZE_BUTTON_WIDTH,
+				patt_width,
+				RESIZE_BUTTON_WIDTH,
+			) {
+				if delete_mode {
+					rule.resize(Rule::SHRINK_DOWN);
+				} else {
+					rule.resize(Rule::EXTEND_DOWN);
+				}
+			}
+
+			for (a, b) in overlay_lines {
+				ui.painter().line_segment([a, b], (2., Color32::WHITE));
+			}
+		});
 }
 
 fn rule_cell_edit_from(
