@@ -82,9 +82,10 @@ impl UScope {
 		{
 			let s = fs::read_to_string(path).ok()?;
 			let data: Value = serde_json::from_str(&s).ok()?;
-			let cell_types = serde_json::from_value(data["cell_types"].clone()).ok()?;
-			let groups = serde_json::from_value(data["groups"].clone()).ok()?;
-			let rules = serde_json::from_value(data["rules"].clone()).ok()?;
+			// TODO: show errors to user
+			let cell_types = serde_json::from_value(data["cell_types"].clone()).unwrap();
+			let groups = serde_json::from_value(data["groups"].clone()).unwrap();
+			let rules = serde_json::from_value(data["rules"].clone()).unwrap();
 			self.cell_types = cell_types;
 			self.dish.rules = rules;
 			self.dish.cell_groups = groups;

@@ -27,7 +27,9 @@ pub struct Rule {
 	variants: Vec<SubRule>,
 	pub enabled: bool,
 	// probability: u8
+	#[serde(alias = "flip_h")]
 	pub flip_x: bool,
+	#[serde(alias = "flip_v")]
 	pub flip_y: bool,
 	pub rotate: bool,
 }
