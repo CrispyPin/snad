@@ -393,8 +393,13 @@ fn rule_editor(
 				}
 			}
 
-			for (a, b) in overlay_lines {
-				ui.painter().line_segment([a, b], (2., Color32::WHITE));
+			for (a, b, marked) in overlay_lines {
+				let stroke = if marked {
+					(6., Color32::RED)
+				} else {
+					(2., Color32::WHITE)
+				};
+				ui.painter().line_segment([a, b], stroke);
 			}
 		});
 }
@@ -471,7 +476,7 @@ fn rule_cell_edit_to(
 	cells: &[CellData],
 	groups: &[CellGroup],
 	(rule_width, rule_height): (usize, usize),
-	overlay_lines: &mut Vec<(Pos2, Pos2)>,
+	overlay_lines: &mut Vec<(Pos2, Pos2, bool)>,
 ) -> bool {
 	let mut changed = false;
 	let rect = Rect::from_min_size(
@@ -481,6 +486,7 @@ fn rule_cell_edit_to(
 	let aabb = ui.allocate_rect(rect, Sense::click());
 	let cycle_colors = aabb.clicked_by(PointerButton::Primary);
 	let switch_type = aabb.clicked_by(PointerButton::Secondary);
+	let hovered = aabb.hovered();
 
 	// draw
 	match rule {
@@ -499,7 +505,7 @@ fn rule_cell_edit_to(
 			let target = origin + Vec2::from((*x as f32, *y as f32)) * CSIZE
 				- Vec2::X * (CSIZE * (rule_width as f32 + 1.) + RESIZE_BUTTON_WIDTH * 2.)
 				+ Vec2::splat(CSIZE) * 0.5;
-			overlay_lines.push((this, target));
+			overlay_lines.push((this, target, hovered));
 		}
 	}
 
