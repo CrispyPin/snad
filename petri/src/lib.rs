@@ -18,7 +18,7 @@ pub struct Chunk {
 	pub contents: Box<[[Cell; CHUNK_SIZE]; CHUNK_SIZE]>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Rule {
 	#[serde(default)]
 	pub name: String,

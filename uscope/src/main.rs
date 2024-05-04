@@ -174,15 +174,26 @@ impl eframe::App for UScope {
 					ui.heading("Rules");
 
 					let mut to_remove = None;
+					let mut to_clone = None;
 					for (i, rule) in self.dish.rules.iter_mut().enumerate() {
 						ui.separator();
 						rule_editor(ui, rule, &self.cell_types, &self.dish.cell_groups);
-						if ui.button("delete").clicked() {
-							to_remove = Some(i);
-						}
+						ui.horizontal(|ui| {
+							if ui.button("delete").clicked() {
+								to_remove = Some(i);
+							}
+							if ui.button("copy").clicked() {
+								to_clone = Some(i);
+							}
+						});
 					}
 					if let Some(i) = to_remove {
 						self.dish.rules.remove(i);
+					}
+					if let Some(i) = to_clone {
+						let mut new_rule = self.dish.rules[i].clone();
+						new_rule.enabled = false;
+						self.dish.rules.push(new_rule);
 					}
 					ui.separator();
 					if ui.button("add rule").clicked() {
