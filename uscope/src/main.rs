@@ -495,11 +495,9 @@ fn rule_cell_edit_to(
 			let group = &groups[*group_id];
 			draw_group(ui, rect, group, cells);
 		}
-		RuleCellTo::Copy(index) => {
+		RuleCellTo::Copy(x, y) => {
 			let this = rect.center();
-			let x = *index % rule_width;
-			let y = *index / rule_width;
-			let target = origin + Vec2::from((x as f32, y as f32)) * CSIZE
+			let target = origin + Vec2::from((*x as f32, *y as f32)) * CSIZE
 				- Vec2::X * (CSIZE * (rule_width as f32 + 1.) + RESIZE_BUTTON_WIDTH * 2.)
 				+ Vec2::splat(CSIZE) * 0.5;
 			overlay_lines.push((this, target));
@@ -519,8 +517,15 @@ fn rule_cell_edit_to(
 				*group_id %= groups.len();
 				changed = true;
 			}
-			RuleCellTo::Copy(index) => {
-				*index = (*index + 1) % (rule_width * rule_height);
+			RuleCellTo::Copy(x, y) => {
+				*x += 1;
+				if *x >= rule_width {
+					*x = 0;
+					*y += 1;
+					if *y >= rule_height {
+						*y = 0;
+					}
+				}
 				changed = true;
 			}
 		}
@@ -536,9 +541,9 @@ fn rule_cell_edit_to(
 				*rule = RuleCellTo::GroupRandom(0);
 			}
 			RuleCellTo::GroupRandom(_) => {
-				*rule = RuleCellTo::Copy(0);
+				*rule = RuleCellTo::Copy(0, 0);
 			}
-			RuleCellTo::Copy(_) => {
+			RuleCellTo::Copy(_, _) => {
 				*rule = RuleCellTo::None;
 			}
 		}

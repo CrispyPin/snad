@@ -60,7 +60,7 @@ pub enum RuleCellTo {
 	/// randomly choose from the group
 	GroupRandom(usize),
 	/// copy the cell from the corresponding input position
-	Copy(usize),
+	Copy(usize, usize),
 }
 
 impl SubRule {
@@ -197,7 +197,10 @@ impl Rule {
 				let mut new = b.clone();
 				for y in 0..new.height {
 					for x in 0..new.width {
-						let old = b.get(new.width - x - 1, y);
+						let mut old = b.get(new.width - x - 1, y);
+						if let (_, RuleCellTo::Copy(cx, _cy)) = &mut old {
+							*cx = new.width - *cx - 1;
+						}
 						new.set_both(x, y, old);
 					}
 				}
@@ -209,7 +212,10 @@ impl Rule {
 				let mut new = b.clone();
 				for y in 0..new.height {
 					for x in 0..new.width {
-						let old = b.get(x, new.height - y - 1);
+						let mut old = b.get(x, new.height - y - 1);
+						if let (_, RuleCellTo::Copy(_cx, cy)) = &mut old {
+							*cy = new.height - *cy - 1;
+						}
 						new.set_both(x, y, old);
 					}
 				}
@@ -222,7 +228,11 @@ impl Rule {
 				let mut new = b.clone();
 				for y in 0..new.height {
 					for x in 0..new.width {
-						let old = b.get(new.width - x - 1, new.height - y - 1);
+						let mut old = b.get(new.width - x - 1, new.height - y - 1);
+						if let (_, RuleCellTo::Copy(cx, cy)) = &mut old {
+							*cx = new.width - *cx - 1;
+							*cy = new.height - *cy - 1;
+						}
 						new.set_both(x, y, old);
 					}
 				}
@@ -235,7 +245,10 @@ impl Rule {
 				new.width = b.height;
 				for y in 0..new.height {
 					for x in 0..new.width {
-						let old = b.get(y, x);
+						let mut old = b.get(y, x);
+						if let (_, RuleCellTo::Copy(cx, cy)) = &mut old {
+							(*cx, *cy) = (*cy, *cx);
+						}
 						new.set_both(x, y, old);
 					}
 				}
@@ -280,6 +293,7 @@ impl Dish {
 		let mut default_rules = vec![
 			Rule {
 				enabled: true,
+				name: "fall".into(),
 				base: SubRule {
 					width: 1,
 					height: 2,
@@ -292,6 +306,7 @@ impl Dish {
 			},
 			Rule {
 				enabled: true,
+				name: "slide".into(),
 				base: SubRule {
 					width: 2,
 					height: 2,
@@ -384,8 +399,8 @@ impl Dish {
 							self.set_cell(px, py, cell);
 						}
 					}
-					RuleCellTo::Copy(index) => {
-						let cell = old_state[index];
+					RuleCellTo::Copy(x, y) => {
+						let cell = old_state[x + y * variant.width];
 						if let Some(cell) = cell {
 							// if the copy source is outside the world, do nothing
 							self.set_cell(px, py, cell);
