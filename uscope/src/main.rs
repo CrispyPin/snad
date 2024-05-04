@@ -211,7 +211,14 @@ impl eframe::App for UScope {
 				let p = ((pos - bounds.min) / GRID_SIZE).floor();
 				let x = p.x as usize;
 				let y = p.y as usize;
-				self.dish.set_cell(x, y, self.brush);
+				let pick = ui.input(|i| i.modifiers.shift);
+				if pick {
+					if let Some(clicked_cell) = self.dish.get_cell(x, y) {
+						self.brush = clicked_cell;
+					}
+				} else {
+					self.dish.set_cell(x, y, self.brush);
+				}
 			}
 		});
 	}
