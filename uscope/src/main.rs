@@ -10,7 +10,7 @@ use eframe::{
 	epaint::Hsva,
 	NativeOptions,
 };
-use egui::{collapsing_header::CollapsingState, PointerButton};
+use egui::{collapsing_header::CollapsingState, DragValue, PointerButton};
 use native_dialog::FileDialog;
 use rand::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -272,10 +272,13 @@ fn rule_editor(
 					rule.generate_variants();
 				}
 			});
-			if ui.checkbox(&mut rule.rotate, "rotate").changed() {
-				rule.generate_variants();
-			}
-
+			ui.horizontal(|ui| {
+				if ui.checkbox(&mut rule.rotate, "rotate").changed() {
+					rule.generate_variants();
+				}
+				ui.label("fail rate");
+				ui.add(DragValue::new(&mut rule.failrate));
+			});
 			let cells_y = rule.height();
 			let cells_x = rule.width();
 			let patt_width = CSIZE * cells_x as f32;

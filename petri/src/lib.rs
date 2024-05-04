@@ -36,7 +36,8 @@ pub struct Rule {
 	pub flip_x: bool,
 	pub flip_y: bool,
 	pub rotate: bool,
-	// probability: u8
+	#[serde(default)]
+	pub failrate: u8,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -131,6 +132,7 @@ impl Rule {
 			flip_x: false,
 			flip_y: false,
 			rotate: false,
+			failrate: 0,
 		}
 	}
 
@@ -380,6 +382,11 @@ impl Dish {
 			.wrapping_sub_unsigned(border_y);
 
 		if !self.subrule_matches(x, y, variant) {
+			return;
+		}
+
+		let fail: u8 = random();
+		if rule.failrate > fail {
 			return;
 		}
 
