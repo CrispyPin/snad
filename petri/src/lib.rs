@@ -10,7 +10,14 @@ pub struct Cell(pub u16);
 pub struct Dish {
 	pub chunk: Chunk,
 	pub rules: Vec<Rule>,
-	pub cell_groups: Vec<Vec<Option<Cell>>>,
+	pub cell_groups: Vec<CellGroup>,
+}
+
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct CellGroup {
+	pub name: String,
+	pub void: bool,
+	pub cells: Vec<Cell>,
 }
 
 #[derive(Debug)]
@@ -26,12 +33,10 @@ pub struct Rule {
 	#[serde(skip)]
 	variants: Vec<SubRule>,
 	pub enabled: bool,
-	// probability: u8
-	#[serde(alias = "flip_h")]
 	pub flip_x: bool,
-	#[serde(alias = "flip_v")]
 	pub flip_y: bool,
 	pub rotate: bool,
+	// probability: u8
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -331,7 +336,11 @@ impl Dish {
 		Self {
 			chunk: Chunk::new().fill_random(),
 			rules: default_rules,
-			cell_groups: vec![vec![None, Some(Cell(1))]],
+			cell_groups: vec![CellGroup {
+				name: "empty".into(),
+				void: true,
+				cells: vec![Cell(0)],
+			}],
 		}
 	}
 
@@ -395,11 +404,9 @@ impl Dish {
 					}
 					RuleCellTo::GroupRandom(group_id) => {
 						let group = &self.cell_groups[group_id];
-						let i = random::<usize>() % group.len();
-						let cell = group[i];
-						if let Some(cell) = cell {
-							self.set_cell(px, py, cell);
-						}
+						let i = random::<usize>() % group.cells.len();
+						let cell = group.cells[i];
+						self.set_cell(px, py, cell);
 					}
 					RuleCellTo::Copy(x, y) => {
 						let cell = old_state[x + y * variant.width];
@@ -427,7 +434,12 @@ impl Dish {
 						}
 					}
 					RuleCellFrom::Group(group_id) => {
-						if !self.cell_groups[group_id].contains(&cell) {
+						let group = &self.cell_groups[group_id];
+						if let Some(cell) = cell {
+							if !group.cells.contains(&cell) {
+								return false;
+							}
+						} else if !group.void {
 							return false;
 						}
 					}

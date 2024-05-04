@@ -15,7 +15,7 @@ use native_dialog::FileDialog;
 use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use petri::{Cell, Chunk, Dish, Rule, RuleCellFrom, RuleCellTo, CHUNK_SIZE};
+use petri::{Cell, CellGroup, Chunk, Dish, Rule, RuleCellFrom, RuleCellTo, CHUNK_SIZE};
 use serde_json::{json, Value};
 
 fn main() {
@@ -147,29 +147,25 @@ impl eframe::App for UScope {
 						let (rect, _response) =
 							ui.allocate_exact_size(Vec2::splat(CSIZE), Sense::click());
 						draw_group(ui, rect, group, &self.cell_types);
-						ui.menu_button("edit", |ui| {
-							let mut void = group.contains(&None);
-							if ui.checkbox(&mut void, "void").changed() {
-								if void {
-									group.push(None);
-								} else {
-									group.retain(|c| c.is_some());
-								}
-							}
-							for (i, celldata) in self.cell_types.iter().enumerate() {
-								let mut included = group.contains(&Some(Cell(i as u16)));
-								if ui.checkbox(&mut included, &celldata.name).changed() {
-									if included {
-										group.push(Some(Cell(i as u16)));
-									} else {
-										group.retain(|c| c != &Some(Cell(i as u16)));
+						ui.horizontal(|ui| {
+							ui.menu_button("edit", |ui| {
+								ui.checkbox(&mut group.void, "void");
+								for (i, celldata) in self.cell_types.iter().enumerate() {
+									let mut included = group.cells.contains(&Cell(i as u16));
+									if ui.checkbox(&mut included, &celldata.name).changed() {
+										if included {
+											group.cells.push(Cell(i as u16));
+										} else {
+											group.cells.retain(|c| c != &Cell(i as u16));
+										}
 									}
 								}
-							}
+							});
+							ui.text_edit_singleline(&mut group.name);
 						});
 					}
 					if ui.button("add group").clicked() {
-						self.dish.cell_groups.push(Vec::new());
+						self.dish.cell_groups.push(CellGroup::default());
 					}
 
 					ui.heading("Rules");
@@ -177,7 +173,6 @@ impl eframe::App for UScope {
 					let mut to_remove = None;
 					let mut to_clone = None;
 					for (i, rule) in self.dish.rules.iter_mut().enumerate() {
-						// ui.separator();
 						rule_editor(
 							ui,
 							rule,
@@ -252,7 +247,7 @@ fn rule_editor(
 	rule: &mut Rule,
 	index: usize,
 	cells: &[CellData],
-	groups: &[Vec<Option<Cell>>],
+	groups: &[CellGroup],
 	to_remove: &mut Option<usize>,
 	to_clone: &mut Option<usize>,
 ) {
@@ -408,7 +403,7 @@ fn rule_cell_edit_from(
 	x: usize,
 	y: usize,
 	cells: &[CellData],
-	groups: &[Vec<Option<Cell>>],
+	groups: &[CellGroup],
 ) -> bool {
 	let mut changed = false;
 	let rect = Rect::from_min_size(
@@ -471,7 +466,7 @@ fn rule_cell_edit_to(
 	rule: &mut RuleCellTo,
 	(x, y): (usize, usize),
 	cells: &[CellData],
-	groups: &[Vec<Option<Cell>>],
+	groups: &[CellGroup],
 	(rule_width, rule_height): (usize, usize),
 	overlay_lines: &mut Vec<(Pos2, Pos2)>,
 ) -> bool {
@@ -552,23 +547,21 @@ fn rule_cell_edit_to(
 	changed
 }
 
-fn draw_group(ui: &mut Ui, rect: Rect, group: &[Option<Cell>], cells: &[CellData]) {
-	let mut group_size = group.len();
-	let has_void = group.contains(&None);
-	if has_void {
-		group_size -= 1;
-	}
+fn draw_group(ui: &mut Ui, rect: Rect, group: &CellGroup, cells: &[CellData]) {
+	let group_size = group.cells.len();
 	let radius_per_color = (CSIZE * 0.7) / (group_size as f32);
-	for (i, cell) in group.iter().flatten().enumerate() {
+	for (i, cell) in group.cells.iter().enumerate() {
 		let color = cells[cell.id()].color;
 		let radius = radius_per_color * ((group_size - i) as f32);
 		ui.painter_at(rect)
 			.circle_filled(rect.center(), radius, color);
 	}
-	if has_void {
+	if group.void {
 		ui.painter_at(rect)
 			.line_segment([rect.min, rect.max], (1., Color32::WHITE));
 	}
+	ui.allocate_rect(rect, Sense::hover())
+		.on_hover_text(&group.name);
 }
 
 impl CellData {
