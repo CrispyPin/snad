@@ -418,7 +418,12 @@ impl Dish {
 						}
 					}
 					RuleCellTo::Copy(x, y) => {
-						let cell = old_state[x + y * variant.width];
+						let index = x + y * variant.width;
+						if index >= old_state.len() {
+							// the copy source is outside the rule bounds
+							continue;
+						}
+						let cell = old_state[index];
 						if let Some(cell) = cell {
 							// if the copy source is outside the world, do nothing
 							self.set_cell(px, py, cell);
