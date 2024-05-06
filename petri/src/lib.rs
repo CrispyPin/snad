@@ -411,9 +411,11 @@ impl Dish {
 					}
 					RuleCellTo::GroupRandom(group_id) => {
 						let group = &self.cell_groups[group_id];
-						let i = random::<usize>() % group.cells.len();
-						let cell = group.cells[i];
-						self.set_cell(px, py, cell);
+						if !group.cells.is_empty() {
+							let i = random::<usize>() % group.cells.len();
+							let cell = group.cells[i];
+							self.set_cell(px, py, cell);
+						}
 					}
 					RuleCellTo::Copy(x, y) => {
 						let cell = old_state[x + y * variant.width];
