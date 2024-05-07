@@ -13,10 +13,8 @@ use eframe::{
 use egui::{collapsing_header::CollapsingState, DragValue, PointerButton};
 use native_dialog::FileDialog;
 use rand::prelude::*;
-use serde::{Deserialize, Serialize};
 
-use petri::{Cell, CellGroup, Chunk, Dish, Rule, RuleCellFrom, RuleCellTo, CHUNK_SIZE};
-use serde_json::{json, Value};
+use petri::{Cell, CellData, CellGroup, Chunk, Dish, Rule, RuleCellFrom, RuleCellTo, CHUNK_SIZE};
 
 fn main() {
 	eframe::run_native(
@@ -33,13 +31,6 @@ struct UScope {
 	brush: Cell,
 	speed: usize,
 	show_grid: bool,
-	cell_types: Vec<CellData>,
-}
-
-#[derive(Default, Debug, Serialize, Deserialize)]
-pub struct CellData {
-	name: String,
-	color: Color32,
 }
 
 impl UScope {
@@ -49,10 +40,6 @@ impl UScope {
 			speed: 500,
 			show_grid: false,
 			brush: Cell(1),
-			cell_types: vec![
-				CellData::new("air", 0, 0, 0),
-				CellData::new("pink_sand", 255, 147, 219),
-			],
 		}
 	}
 
@@ -62,36 +49,24 @@ impl UScope {
 			.add_filter("JSON", &["json"])
 			.show_save_single_file()
 		{
-			let out = json!({
-				"cell_types": self.cell_types,
-				"rules": self.dish.rules,
-				"groups": self.dish.cell_groups,
-			});
-			let out = serde_json::to_string(&out).ok()?;
 			let mut file = File::create(path).ok()?;
+			let out = serde_json::to_string(&self.dish).ok()?;
 			file.write_all(out.as_bytes()).ok()?;
 		}
 		Some(())
 	}
 
-	fn open_universe(&mut self) -> Option<()> {
+	fn open_universe(&mut self) {
 		if let Ok(Some(path)) = FileDialog::new()
 			.set_filename("universe_1.json")
 			.add_filter("JSON", &["json"])
 			.show_open_single_file()
 		{
-			let s = fs::read_to_string(path).ok()?;
-			let data: Value = serde_json::from_str(&s).ok()?;
 			// TODO: show errors to user
-			let cell_types = serde_json::from_value(data["cell_types"].clone()).unwrap();
-			let groups = serde_json::from_value(data["groups"].clone()).unwrap();
-			let rules = serde_json::from_value(data["rules"].clone()).unwrap();
-			self.cell_types = cell_types;
-			self.dish.rules = rules;
-			self.dish.cell_groups = groups;
+			let s = fs::read_to_string(path).unwrap();
+			self.dish = serde_json::from_str(&s).unwrap();
 			self.dish.update_rules();
 		}
-		Some(())
 	}
 }
 
@@ -120,12 +95,12 @@ impl eframe::App for UScope {
 
 				ScrollArea::vertical().show(ui, |ui| {
 					ui.heading("Cells");
-					for (i, cell) in self.cell_types.iter_mut().enumerate() {
+					for (i, cell) in self.dish.types.iter_mut().enumerate() {
 						ui.horizontal(|ui| {
 							ui.set_width(120.);
 							ui.radio_value(&mut self.brush.0, i as u16, "");
 							ui.text_edit_singleline(&mut cell.name);
-							ui.color_edit_button_srgba(&mut cell.color);
+							ui.color_edit_button_srgb(&mut cell.color);
 						});
 					}
 
@@ -133,9 +108,9 @@ impl eframe::App for UScope {
 						let h = random::<f32>();
 						let s = random::<f32>() * 0.5 + 0.5;
 						let v = random::<f32>() * 0.5 + 0.5;
-						let color = Hsva::new(h, s, v, 1.).into();
-						let name = format!("cell #{}", self.cell_types.len());
-						self.cell_types.push(CellData { name, color })
+						let color = Hsva::new(h, s, v, 1.).to_srgb();
+						let name = format!("cell #{}", self.dish.types.len());
+						self.dish.types.push(CellData { name, color })
 					}
 					if ui.button("fill").clicked() {
 						self.dish.chunk.contents.fill([self.brush; CHUNK_SIZE]);
@@ -143,14 +118,14 @@ impl eframe::App for UScope {
 					ui.separator();
 
 					ui.heading("Groups");
-					for group in &mut self.dish.cell_groups {
+					for group in &mut self.dish.groups {
 						let (rect, _response) =
 							ui.allocate_exact_size(Vec2::splat(CSIZE), Sense::click());
-						draw_group(ui, rect, group, &self.cell_types);
+						draw_group(ui, rect, group, &self.dish.types);
 						ui.horizontal(|ui| {
 							ui.menu_button("edit", |ui| {
 								ui.checkbox(&mut group.void, "void");
-								for (i, celldata) in self.cell_types.iter().enumerate() {
+								for (i, celldata) in self.dish.types.iter().enumerate() {
 									let mut included = group.cells.contains(&Cell(i as u16));
 									if ui.checkbox(&mut included, &celldata.name).changed() {
 										if included {
@@ -165,7 +140,7 @@ impl eframe::App for UScope {
 						});
 					}
 					if ui.button("add group").clicked() {
-						self.dish.cell_groups.push(CellGroup::default());
+						self.dish.groups.push(CellGroup::default());
 					}
 
 					ui.heading("Rules");
@@ -177,8 +152,8 @@ impl eframe::App for UScope {
 							ui,
 							rule,
 							i,
-							&self.cell_types,
-							&self.dish.cell_groups,
+							&self.dish.types,
+							&self.dish.groups,
 							&mut to_remove,
 							&mut to_clone,
 						);
@@ -200,7 +175,7 @@ impl eframe::App for UScope {
 		CentralPanel::default().show(ctx, |ui| {
 			let bounds = ui.available_rect_before_wrap();
 			let painter = ui.painter_at(bounds);
-			paint_chunk(painter, &self.dish.chunk, &self.cell_types, self.show_grid);
+			paint_chunk(painter, &self.dish.chunk, &self.dish.types, self.show_grid);
 
 			let rect = ui.allocate_rect(bounds, Sense::click_and_drag());
 			if let Some(pos) = rect.interact_pointer_pos() {
@@ -232,6 +207,7 @@ fn paint_chunk(painter: Painter, chunk: &Chunk, cells: &[CellData], grid: bool) 
 				continue;
 			}
 			let color = cells[cell.id()].color;
+			let color = Color32::from_rgb(color[0], color[1], color[2]);
 			if grid {
 				painter.rect(rect, 0., color, (1., Color32::GRAY));
 			} else {
@@ -431,6 +407,7 @@ fn rule_cell_edit_from(
 		RuleCellFrom::Any => (),
 		RuleCellFrom::One(cell) => {
 			let color = cells[cell.id()].color;
+			let color = Color32::from_rgb(color[0], color[1], color[2]);
 			ui.painter()
 				.rect(rect.shrink(OUTLINE.0 / 2.), 0., color, OUTLINE);
 		}
@@ -497,6 +474,7 @@ fn rule_cell_edit_to(
 		RuleCellTo::None => (),
 		RuleCellTo::One(cell) => {
 			let color = cells[cell.id()].color;
+			let color = Color32::from_rgb(color[0], color[1], color[2]);
 			ui.painter()
 				.rect(rect.shrink(OUTLINE.0 / 2.), 0., color, OUTLINE);
 		}
@@ -565,6 +543,7 @@ fn draw_group(ui: &mut Ui, rect: Rect, group: &CellGroup, cells: &[CellData]) {
 	let radius_per_color = (CSIZE * 0.7) / (group_size as f32);
 	for (i, cell) in group.cells.iter().enumerate() {
 		let color = cells[cell.id()].color;
+		let color = Color32::from_rgb(color[0], color[1], color[2]);
 		let radius = radius_per_color * ((group_size - i) as f32);
 		ui.painter_at(rect)
 			.circle_filled(rect.center(), radius, color);
@@ -575,13 +554,4 @@ fn draw_group(ui: &mut Ui, rect: Rect, group: &CellGroup, cells: &[CellData]) {
 	}
 	ui.allocate_rect(rect, Sense::hover())
 		.on_hover_text(&group.name);
-}
-
-impl CellData {
-	fn new(name: &str, r: u8, g: u8, b: u8) -> Self {
-		Self {
-			name: name.to_owned(),
-			color: Color32::from_rgb(r, g, b),
-		}
-	}
 }

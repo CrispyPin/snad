@@ -6,11 +6,13 @@ pub const CHUNK_SIZE: usize = 32;
 #[derive(Default, Debug, PartialEq, Clone, Copy, Serialize, Deserialize)]
 pub struct Cell(pub u16);
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Dish {
+	#[serde(skip)]
 	pub chunk: Chunk,
 	pub rules: Vec<Rule>,
-	pub cell_groups: Vec<CellGroup>,
+	pub types: Vec<CellData>,
+	pub groups: Vec<CellGroup>,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -20,7 +22,13 @@ pub struct CellGroup {
 	pub cells: Vec<Cell>,
 }
 
-#[derive(Debug)]
+#[derive(Default, Debug, Serialize, Deserialize)]
+pub struct CellData {
+	pub name: String,
+	pub color: [u8; 3],
+}
+
+#[derive(Debug, Default)]
 pub struct Chunk {
 	pub contents: Box<[[Cell; CHUNK_SIZE]; CHUNK_SIZE]>,
 }
@@ -342,7 +350,11 @@ impl Dish {
 		Self {
 			chunk: Chunk::new().fill_random(),
 			rules: default_rules,
-			cell_groups: vec![CellGroup {
+			types: vec![
+				CellData::new("air", 0, 0, 0),
+				CellData::new("pink_sand", 255, 147, 219),
+			],
+			groups: vec![CellGroup {
 				name: "empty".into(),
 				void: true,
 				cells: vec![Cell(0)],
@@ -414,7 +426,7 @@ impl Dish {
 						self.set_cell(px, py, rule_cell);
 					}
 					RuleCellTo::GroupRandom(group_id) => {
-						let group = &self.cell_groups[group_id];
+						let group = &self.groups[group_id];
 						if !group.cells.is_empty() {
 							let i = random::<usize>() % group.cells.len();
 							let cell = group.cells[i];
@@ -452,7 +464,7 @@ impl Dish {
 						}
 					}
 					RuleCellFrom::Group(group_id) => {
-						let group = &self.cell_groups[group_id];
+						let group = &self.groups[group_id];
 						if let Some(cell) = cell {
 							if !group.cells.contains(&cell) {
 								return false;
@@ -489,5 +501,14 @@ impl Dish {
 impl Cell {
 	pub fn id(&self) -> usize {
 		self.0 as usize
+	}
+}
+
+impl CellData {
+	pub fn new(name: &str, r: u8, g: u8, b: u8) -> Self {
+		Self {
+			name: name.to_owned(),
+			color: [r, g, b],
+		}
 	}
 }
