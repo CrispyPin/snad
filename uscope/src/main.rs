@@ -271,13 +271,14 @@ fn rule_editor(
 				if ui.checkbox(&mut rule.flip_y, "flip Y").changed() {
 					rule.generate_variants();
 				}
-			});
-			ui.horizontal(|ui| {
 				if ui.checkbox(&mut rule.rotate, "rotate").changed() {
 					rule.generate_variants();
 				}
-				ui.label("fail rate");
+			});
+			ui.horizontal(|ui| {
+				ui.label("fail rate:");
 				ui.add(DragValue::new(&mut rule.failrate));
+				ui.label(format!("variants: {}", rule.variant_count()));
 			});
 			let cells_y = rule.height();
 			let cells_x = rule.width();

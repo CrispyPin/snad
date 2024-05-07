@@ -186,6 +186,10 @@ impl Rule {
 		self.generate_variants();
 	}
 
+	pub fn variant_count(&self) -> usize {
+		self.variants.len()
+	}
+
 	pub fn generate_variants(&mut self) {
 		self.variants.clear();
 		self.variants.push(self.base.clone());
