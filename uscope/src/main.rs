@@ -106,7 +106,7 @@ impl eframe::App for UScope {
 			.show(ctx, |ui| {
 				ui.heading("Simulation");
 				ui.label("speed");
-				ui.add(Slider::new(&mut self.speed, 0..=5000));
+				ui.add(Slider::new(&mut self.speed, 0..=5000).clamp_to_range(false));
 				ui.checkbox(&mut self.show_grid, "show grid");
 				ui.horizontal(|ui| {
 					if ui.button("Save").clicked() {
@@ -228,6 +228,9 @@ fn paint_chunk(painter: Painter, chunk: &Chunk, cells: &[CellData], grid: bool) 
 			let cell = &chunk.get_cell(x, y);
 			let corner = bounds.min + (Vec2::from((x as f32, y as f32)) * GRID_SIZE);
 			let rect = Rect::from_min_size(corner, Vec2::splat(GRID_SIZE));
+			if cell.id() >= cells.len() {
+				continue;
+			}
 			let color = cells[cell.id()].color;
 			if grid {
 				painter.rect(rect, 0., color, (1., Color32::GRAY));
