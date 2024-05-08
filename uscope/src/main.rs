@@ -14,7 +14,7 @@ use egui::{collapsing_header::CollapsingState, DragValue, PointerButton};
 use native_dialog::FileDialog;
 use rand::prelude::*;
 
-use petri::{Cell, CellData, CellGroup, Chunk, Dish, Rule, RuleCellFrom, RuleCellTo, CHUNK_SIZE};
+use petri::{Cell, CellData, CellGroup, Dish, Rule, RuleCellFrom, RuleCellTo, CHUNK_SIZE};
 
 fn main() {
 	eframe::run_native(
@@ -37,7 +37,7 @@ impl UScope {
 	fn new(_cc: &eframe::CreationContext<'_>) -> Self {
 		Self {
 			dish: Dish::new(),
-			speed: 500,
+			speed: 1,
 			show_grid: false,
 			brush: Cell(1),
 		}
@@ -65,7 +65,7 @@ impl UScope {
 			// TODO: show errors to user
 			let s = fs::read_to_string(path).unwrap();
 			self.dish = serde_json::from_str(&s).unwrap();
-			self.dish.update_rules();
+			self.dish.update_all_rules();
 		}
 	}
 }
@@ -74,15 +74,18 @@ impl eframe::App for UScope {
 	fn update(&mut self, ctx: &eframe::egui::Context, _frame: &mut eframe::Frame) {
 		ctx.request_repaint();
 		for _ in 0..self.speed {
-			self.dish.fire_blindly();
+			self.dish.fire_once();
 		}
 		SidePanel::left("left_panel")
 			.min_width(100.)
 			.show(ctx, |ui| {
 				ui.heading("Simulation");
 				ui.label("speed");
-				ui.add(Slider::new(&mut self.speed, 0..=5000).clamp_to_range(false));
+				ui.add(Slider::new(&mut self.speed, 0..=15).clamp_to_range(false));
 				ui.checkbox(&mut self.show_grid, "show grid");
+				if ui.button("regenerate rules and cache").clicked() {
+					self.dish.update_all_rules();
+				}
 				ui.horizontal(|ui| {
 					if ui.button("Save").clicked() {
 						self.save_universe();
@@ -113,7 +116,7 @@ impl eframe::App for UScope {
 						self.dish.types.push(CellData { name, color })
 					}
 					if ui.button("fill").clicked() {
-						self.dish.chunk.contents.fill([self.brush; CHUNK_SIZE]);
+						self.dish.fill(self.brush);
 					}
 					ui.separator();
 
@@ -147,8 +150,9 @@ impl eframe::App for UScope {
 
 					let mut to_remove = None;
 					let mut to_clone = None;
+					let mut to_update = None;
 					for (i, rule) in self.dish.rules.iter_mut().enumerate() {
-						rule_editor(
+						let changed = rule_editor(
 							ui,
 							rule,
 							i,
@@ -157,25 +161,35 @@ impl eframe::App for UScope {
 							&mut to_remove,
 							&mut to_clone,
 						);
+						if changed {
+							rule.generate_variants();
+							to_update = Some(i);
+						}
+					}
+					if let Some(i) = to_update {
+						self.dish.update_cache_single_rule(i);
 					}
 					if let Some(i) = to_remove {
 						self.dish.rules.remove(i);
+						self.dish.rebuild_cache();
 					}
 					if let Some(i) = to_clone {
 						let mut new_rule = self.dish.rules[i].clone();
 						new_rule.enabled = false;
 						self.dish.rules.push(new_rule);
+						self.dish.cache_last_added_rule();
 					}
 					ui.separator();
 					if ui.button("add rule").clicked() {
 						self.dish.rules.push(Rule::new());
+						self.dish.cache_last_added_rule()
 					}
 				});
 			});
 		CentralPanel::default().show(ctx, |ui| {
 			let bounds = ui.available_rect_before_wrap();
 			let painter = ui.painter_at(bounds);
-			paint_chunk(painter, &self.dish.chunk, &self.dish.types, self.show_grid);
+			paint_world(painter, &self.dish, self.show_grid);
 
 			let rect = ui.allocate_rect(bounds, Sense::click_and_drag());
 			if let Some(pos) = rect.interact_pointer_pos() {
@@ -189,6 +203,7 @@ impl eframe::App for UScope {
 					}
 				} else {
 					self.dish.set_cell(x, y, self.brush);
+					self.dish.update_cache(x as isize, y as isize, 1, 1);
 				}
 			}
 		});
@@ -196,11 +211,12 @@ impl eframe::App for UScope {
 }
 
 const GRID_SIZE: f32 = 16.;
-fn paint_chunk(painter: Painter, chunk: &Chunk, cells: &[CellData], grid: bool) {
+fn paint_world(painter: Painter, world: &Dish, grid: bool) {
+	let cells = &world.types;
 	let bounds = painter.clip_rect();
 	for x in 0..CHUNK_SIZE {
 		for y in 0..CHUNK_SIZE {
-			let cell = &chunk.get_cell(x, y);
+			let cell = &world.get_cell(x, y).unwrap();
 			let corner = bounds.min + (Vec2::from((x as f32, y as f32)) * GRID_SIZE);
 			let rect = Rect::from_min_size(corner, Vec2::splat(GRID_SIZE));
 			if cell.id() >= cells.len() {
@@ -229,11 +245,14 @@ fn rule_editor(
 	groups: &[CellGroup],
 	to_remove: &mut Option<usize>,
 	to_clone: &mut Option<usize>,
-) {
+) -> bool {
+	let mut changed = false;
 	let id = ui.make_persistent_id(format!("rule {index}"));
 	CollapsingState::load_with_default_open(ui.ctx(), id, true)
 		.show_header(ui, |ui| {
-			ui.checkbox(&mut rule.enabled, &rule.name);
+			if ui.checkbox(&mut rule.enabled, &rule.name).changed() {
+				changed = true;
+			}
 			if ui.button("delete").clicked() {
 				*to_remove = Some(index);
 			}
@@ -245,13 +264,13 @@ fn rule_editor(
 			ui.text_edit_singleline(&mut rule.name);
 			ui.horizontal(|ui| {
 				if ui.checkbox(&mut rule.flip_x, "flip X").changed() {
-					rule.generate_variants();
+					changed = true;
 				}
 				if ui.checkbox(&mut rule.flip_y, "flip Y").changed() {
-					rule.generate_variants();
+					changed = true;
 				}
 				if ui.checkbox(&mut rule.rotate, "rotate").changed() {
-					rule.generate_variants();
+					changed = true;
 				}
 			});
 			ui.horizontal(|ui| {
@@ -297,7 +316,7 @@ fn rule_editor(
 						&mut overlay_lines,
 					);
 					if changed_left || changed_right {
-						rule.generate_variants();
+						changed = true;
 					}
 				}
 			}
@@ -382,6 +401,7 @@ fn rule_editor(
 				ui.painter().line_segment([a, b], stroke);
 			}
 		});
+	changed
 }
 
 fn rule_cell_edit_from(
