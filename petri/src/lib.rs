@@ -404,6 +404,7 @@ impl Dish {
 		// remove old cache for this rule, since the variants may have changed
 		self.cache.retain(|c| c.rule != rule_index);
 		self.add_cache_single_rule(rule_index);
+		self.update_match_cache();
 	}
 
 	/// run after adding a rule
@@ -433,9 +434,6 @@ impl Dish {
 						matches.push((px, py));
 					}
 				}
-			}
-			if !matches.is_empty() {
-				self.match_cache.push(self.cache.len());
 			}
 			self.cache.push(RuleCache {
 				rule: rule_index,
