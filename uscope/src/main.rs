@@ -1,6 +1,7 @@
 use std::{
 	fs::{self, File},
 	io::Write,
+	time::{Duration, Instant},
 };
 
 use eframe::{
@@ -31,6 +32,7 @@ struct UScope {
 	brush: Cell,
 	speed: u32,
 	show_grid: bool,
+	sim_times: Vec<Duration>,
 }
 
 impl UScope {
@@ -40,6 +42,8 @@ impl UScope {
 			speed: 50,
 			show_grid: false,
 			brush: Cell(1),
+			// sim_times: vec![0],
+			sim_times: vec![Duration::from_micros(1)],
 		}
 	}
 
@@ -73,8 +77,19 @@ impl UScope {
 impl eframe::App for UScope {
 	fn update(&mut self, ctx: &eframe::egui::Context, _frame: &mut eframe::Frame) {
 		ctx.request_repaint();
+		let sim_frame = Instant::now();
 		for _ in 0..self.speed {
-			self.dish.try_one_position_overlapped();
+			// benchmarks made with sand_stress_test at 50000 speed in a release build
+			// ~50ms
+			// self.dish.try_one_position_overlapped();
+			// ~35ms
+			self.dish.fire_blindly_cached();
+		}
+		let sim_time = sim_frame.elapsed();
+		// self.sim_times.push(sim_time.as_micros());
+		self.sim_times.push(sim_time);
+		if self.sim_times.len() > 60 {
+			self.sim_times.remove(0);
 		}
 		SidePanel::left("left_panel")
 			.min_width(100.)
@@ -82,6 +97,11 @@ impl eframe::App for UScope {
 				ui.heading("Simulation");
 				ui.label("speed");
 				ui.add(Slider::new(&mut self.speed, 0..=500).clamp_to_range(false));
+				ui.label(format!("sim time: {sim_time:?}"));
+				let avg_sim_time =
+					self.sim_times.iter().sum::<Duration>() / self.sim_times.len() as u32;
+				ui.label(format!("average sim time: {avg_sim_time:?}"));
+
 				ui.checkbox(&mut self.show_grid, "show grid");
 				if ui.button("regenerate rules and cache").clicked() {
 					self.dish.update_all_rules();
