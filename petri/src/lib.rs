@@ -252,30 +252,30 @@ impl Rule {
 		}
 
 		if self.flip_x {
-			transform_variants(&mut self.variants, |b| {
-				let mut new = b.clone();
+			transform_variants(&mut self.variants, |base| {
+				let mut new = base.clone();
 				for y in 0..new.height {
 					for x in 0..new.width {
-						let mut old = b.get(new.width - x - 1, y);
-						if let (_, RuleCellTo::Copy(cx, _cy)) = &mut old {
+						let mut cell = base.get(new.width - x - 1, y);
+						if let (_, RuleCellTo::Copy(cx, _cy)) = &mut cell {
 							*cx = new.width - *cx - 1;
 						}
-						new.set_both(x, y, old);
+						new.set_both(x, y, cell);
 					}
 				}
 				new
 			});
 		}
 		if self.flip_y {
-			transform_variants(&mut self.variants, |b| {
-				let mut new = b.clone();
+			transform_variants(&mut self.variants, |base| {
+				let mut new = base.clone();
 				for y in 0..new.height {
 					for x in 0..new.width {
-						let mut old = b.get(x, new.height - y - 1);
-						if let (_, RuleCellTo::Copy(_cx, cy)) = &mut old {
+						let mut cell = base.get(x, new.height - y - 1);
+						if let (_, RuleCellTo::Copy(_cx, cy)) = &mut cell {
 							*cy = new.height - *cy - 1;
 						}
-						new.set_both(x, y, old);
+						new.set_both(x, y, cell);
 					}
 				}
 				new
@@ -283,32 +283,35 @@ impl Rule {
 		}
 		if self.rotate {
 			// 180° rotations (same as flipping x and y)
-			transform_variants(&mut self.variants, |b| {
-				let mut new = b.clone();
+			transform_variants(&mut self.variants, |base| {
+				let mut new = base.clone();
 				for y in 0..new.height {
 					for x in 0..new.width {
-						let mut old = b.get(new.width - x - 1, new.height - y - 1);
-						if let (_, RuleCellTo::Copy(cx, cy)) = &mut old {
-							*cx = new.width - *cx - 1;
-							*cy = new.height - *cy - 1;
+						let mut cell = base.get(new.width - x - 1, new.height - y - 1);
+						if let (_, RuleCellTo::Copy(cx, cy)) = &mut cell {
+							let new_x = new.width - *cx - 1;
+							let new_y = new.height - *cy - 1;
+							(*cx, *cy) = (new_x, new_y);
 						}
-						new.set_both(x, y, old);
+						new.set_both(x, y, cell);
 					}
 				}
 				new
 			});
 			// 90° rotations
-			transform_variants(&mut self.variants, |b| {
-				let mut new = b.clone();
-				new.height = b.width;
-				new.width = b.height;
+			transform_variants(&mut self.variants, |base| {
+				let mut new = base.clone();
+				new.height = base.width;
+				new.width = base.height;
 				for y in 0..new.height {
 					for x in 0..new.width {
-						let mut old = b.get(y, x);
-						if let (_, RuleCellTo::Copy(cx, cy)) = &mut old {
-							(*cx, *cy) = (*cy, *cx);
+						let mut cell = base.get(y, new.width - x - 1);
+						if let (_, RuleCellTo::Copy(cx, cy)) = &mut cell {
+							let new_x = new.height - *cy - 1;
+							let new_y = *cx;
+							(*cx, *cy) = (new_x, new_y);
 						}
-						new.set_both(x, y, old);
+						new.set_both(x, y, cell);
 					}
 				}
 				new
