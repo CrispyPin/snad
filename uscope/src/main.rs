@@ -29,7 +29,7 @@ fn main() {
 struct UScope {
 	dish: Dish,
 	brush: Cell,
-	speed: usize,
+	speed: u32,
 	show_grid: bool,
 }
 
@@ -37,7 +37,7 @@ impl UScope {
 	fn new(_cc: &eframe::CreationContext<'_>) -> Self {
 		Self {
 			dish: Dish::new(),
-			speed: 1,
+			speed: 50,
 			show_grid: false,
 			brush: Cell(1),
 		}
@@ -74,14 +74,14 @@ impl eframe::App for UScope {
 	fn update(&mut self, ctx: &eframe::egui::Context, _frame: &mut eframe::Frame) {
 		ctx.request_repaint();
 		for _ in 0..self.speed {
-			self.dish.fire_once();
+			self.dish.try_one_position_overlapped();
 		}
 		SidePanel::left("left_panel")
 			.min_width(100.)
 			.show(ctx, |ui| {
 				ui.heading("Simulation");
 				ui.label("speed");
-				ui.add(Slider::new(&mut self.speed, 0..=15).clamp_to_range(false));
+				ui.add(Slider::new(&mut self.speed, 0..=500).clamp_to_range(false));
 				ui.checkbox(&mut self.show_grid, "show grid");
 				if ui.button("regenerate rules and cache").clicked() {
 					self.dish.update_all_rules();

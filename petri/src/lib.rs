@@ -19,6 +19,10 @@ pub struct Dish {
 	cache: Vec<RuleCache>,
 	#[serde(skip)]
 	match_cache: Vec<usize>,
+	#[serde(skip)]
+	max_rule_width: usize,
+	#[serde(skip)]
+	max_rule_height: usize,
 }
 
 #[derive(Debug)]
@@ -186,6 +190,22 @@ impl Rule {
 
 	pub fn width(&self) -> usize {
 		self.base.width
+	}
+
+	fn max_width(&self) -> usize {
+		self.variants
+			.iter()
+			.map(|r| r.width)
+			.max()
+			.unwrap_or_default()
+	}
+
+	fn max_height(&self) -> usize {
+		self.variants
+			.iter()
+			.map(|r| r.height)
+			.max()
+			.unwrap_or_default()
 	}
 
 	pub fn resize(&mut self, params: ResizeParam) {
@@ -369,7 +389,7 @@ impl Dish {
 			rule.generate_variants()
 		}
 
-		Self {
+		let mut new = Self {
 			world: World {
 				chunk: Chunk::new().with_random_ones(),
 			},
@@ -385,16 +405,25 @@ impl Dish {
 			}],
 			cache: Vec::new(),
 			match_cache: Vec::new(),
-		}
+			max_rule_height: 1,
+			max_rule_width: 1,
+		};
+		new.update_all_rules();
+		new
 	}
 
 	pub fn fill(&mut self, cell: Cell) {
 		self.world.fill(cell);
+		self.rebuild_cache();
 	}
 
 	pub fn update_all_rules(&mut self) {
+		self.max_rule_height = 1;
+		self.max_rule_width = 1;
 		for rule in &mut self.rules {
 			rule.generate_variants();
+			self.max_rule_height = self.max_rule_height.max(rule.max_height());
+			self.max_rule_width = self.max_rule_width.max(rule.max_width());
 		}
 		self.rebuild_cache();
 	}
@@ -430,7 +459,7 @@ impl Dish {
 
 			for px in -border_x..(CHUNK_SIZE as isize) {
 				for py in -border_y..(CHUNK_SIZE as isize) {
-					if self.world.subrule_matches(px, py, &rule, &self.groups) {
+					if self.world.subrule_matches(px, py, rule, &self.groups) {
 						matches.push((px, py));
 					}
 				}
@@ -444,6 +473,7 @@ impl Dish {
 	}
 
 	pub fn rebuild_cache(&mut self) {
+		println!("rebuilding cache");
 		self.cache.clear();
 		for rule_index in 0..self.rules.len() {
 			self.add_cache_single_rule(rule_index);
@@ -485,7 +515,7 @@ impl Dish {
 
 			for px in (x.wrapping_sub_unsigned(border_x))..(x.wrapping_add_unsigned(width)) {
 				for py in (y.wrapping_sub_unsigned(border_y))..(y.wrapping_add_unsigned(height)) {
-					if self.world.subrule_matches(px, py, &rule, &self.groups) {
+					if self.world.subrule_matches(px, py, rule, &self.groups) {
 						cache.matches.push((px, py));
 					}
 				}
@@ -503,7 +533,8 @@ impl Dish {
 			.collect();
 	}
 
-	pub fn fire_once(&mut self) {
+	/// picks a random match from any rule with at least one match
+	pub fn apply_one_match(&mut self) {
 		if self.match_cache.is_empty() {
 			return;
 		}
@@ -519,6 +550,86 @@ impl Dish {
 
 		self.apply_rule(x, y, rule_cache.rule, rule_cache.variant);
 		self.update_cache(x, y, width, height);
+	}
+
+	/// Picks a random point and applies a random match at that position, if any exist.
+	/// The random point can be outside the world bounds, to catch cases where the root (top-left) of a match is outside the bounds.
+	/// TODO make sure max_rule_[width/height] is up to date after each rule.generate_variants
+	pub fn fire_blindly_cached(&mut self) {
+		let border_x = self.max_rule_width - 1;
+		let border_y = self.max_rule_height - 1;
+		let x = ((random::<usize>() % (CHUNK_SIZE + border_x)) as isize)
+			.wrapping_sub_unsigned(border_x);
+		let y = ((random::<usize>() % (CHUNK_SIZE + border_y)) as isize)
+			.wrapping_sub_unsigned(border_y);
+
+		let matches = self.get_matches_at_point(x, y);
+		if matches.is_empty() {
+			return;
+		}
+		let i = random::<usize>() % matches.len();
+		let (rule_index, variant_index) = matches[i];
+		self.apply_rule(x, y, rule_index, variant_index);
+		let rule = &self.rules[rule_index].variants[variant_index];
+		let width = rule.width;
+		let height = rule.height;
+		self.update_cache(x, y, width, height);
+	}
+
+	/// Picks a random point and applies a random match that overlaps with it, if any exist.
+	/// TODO benchmark and only keep one of try_one_position_overlapped and fire_blindly_cached
+	pub fn try_one_position_overlapped(&mut self) {
+		let x = (random::<usize>() % CHUNK_SIZE) as isize;
+		let y = (random::<usize>() % CHUNK_SIZE) as isize;
+
+		let matches = self.get_matches_containing_point(x, y);
+		if matches.is_empty() {
+			return;
+		}
+		let i = random::<usize>() % matches.len();
+		let (x, y, rule_index, variant_index) = matches[i];
+		self.apply_rule(x, y, rule_index, variant_index);
+		let rule = &self.rules[rule_index].variants[variant_index];
+		let width = rule.width;
+		let height = rule.height;
+		self.update_cache(x, y, width, height);
+	}
+
+	fn get_matches_at_point(&self, x: isize, y: isize) -> Vec<(usize, usize)> {
+		self.cache
+			.iter()
+			.flat_map(|rule| {
+				rule.matches.iter().filter_map(|&(mx, my)| {
+					(mx == x && my == y).then_some((rule.rule, rule.variant))
+				})
+			})
+			.collect()
+	}
+
+	fn get_matches_containing_point(
+		&self,
+		x: isize,
+		y: isize,
+	) -> Vec<(isize, isize, usize, usize)> {
+		fn contains((x, y, w, h): (isize, isize, usize, usize), (px, py): (isize, isize)) -> bool {
+			px >= x
+				&& py >= y && px < x.saturating_add_unsigned(w)
+				&& py < y.saturating_add_unsigned(h)
+		}
+		self.cache
+			.iter()
+			.flat_map(|rule| {
+				let variant = &self.rules[rule.rule].variants[rule.variant];
+				let (w, h) = (variant.width, variant.height);
+				rule.matches.iter().filter_map(move |&(mx, my)| {
+					if contains((mx, my, w, h), (x, y)) {
+						Some((mx, my, rule.rule, rule.variant))
+					} else {
+						None
+					}
+				})
+			})
+			.collect()
 	}
 
 	pub fn fire_blindly(&mut self) {
@@ -555,7 +666,8 @@ impl Dish {
 		let rule = &self.rules[rule_index];
 		let variant = &rule.variants[variant_index].clone();
 
-		if rule.failrate > random() {
+		if rule.failrate != 0 && rule.failrate > random() {
+			// TODO don't update cache after this
 			return;
 		}
 
