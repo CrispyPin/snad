@@ -307,7 +307,7 @@ impl Rule {
 					for x in 0..new.width {
 						let mut cell = base.get(y, new.width - x - 1);
 						if let (_, RuleCellTo::Copy(cx, cy)) = &mut cell {
-							let new_x = new.height - *cy - 1;
+							let new_x = base.height - *cy - 1;
 							let new_y = *cx;
 							(*cx, *cy) = (new_x, new_y);
 						}

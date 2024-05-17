@@ -81,9 +81,10 @@ impl eframe::App for UScope {
 		for _ in 0..self.speed {
 			// benchmarks made with sand_stress_test at 50000 speed in a release build
 			// ~50ms
-			// self.dish.try_one_position_overlapped();
+			self.dish.try_one_position_overlapped();
 			// ~35ms
-			self.dish.fire_blindly_cached();
+			// TODO: has directional bias, figure out why and fix it
+			// self.dish.fire_blindly_cached();
 		}
 		let sim_time = sim_frame.elapsed();
 		// self.sim_times.push(sim_time.as_micros());
