@@ -79,12 +79,8 @@ impl eframe::App for UScope {
 		ctx.request_repaint();
 		let sim_frame = Instant::now();
 		for _ in 0..self.speed {
-			// benchmarks made with sand_stress_test at 50000 speed in a release build
-			// ~50ms
-			self.dish.try_one_position_overlapped();
-			// ~35ms
-			// TODO: has directional bias, figure out why and fix it
-			// self.dish.fire_blindly_cached();
+			self.dish.try_one_location();
+			// self.dish.apply_one_match();
 		}
 		let sim_time = sim_frame.elapsed();
 		// self.sim_times.push(sim_time.as_micros());
@@ -106,6 +102,9 @@ impl eframe::App for UScope {
 				ui.checkbox(&mut self.show_grid, "show grid");
 				if ui.button("regenerate rules and cache").clicked() {
 					self.dish.update_all_rules();
+				}
+				if ui.button("debug cache").clicked() {
+					self.dish.dbg_cache();
 				}
 				ui.horizontal(|ui| {
 					if ui.button("Save").clicked() {
@@ -223,8 +222,11 @@ impl eframe::App for UScope {
 						self.brush = clicked_cell;
 					}
 				} else {
-					self.dish.set_cell(x, y, self.brush);
-					self.dish.update_cache(x as isize, y as isize, 1, 1);
+					let old = self.dish.get_cell(x, y);
+					if Some(self.brush) != old {
+						self.dish.set_cell(x, y, self.brush);
+						self.dish.update_cache(x as isize, y as isize, 1, 1);
+					}
 				}
 			}
 		});
@@ -298,6 +300,9 @@ fn rule_editor(
 				ui.label("fail rate:");
 				ui.add(DragValue::new(&mut rule.failrate));
 				ui.label(format!("variants: {}", rule.variant_count()));
+				if ui.button("debug").clicked() {
+					rule.dbg_variants();
+				}
 			});
 			let cells_y = rule.height();
 			let cells_x = rule.width();

@@ -74,6 +74,12 @@ pub struct Rule {
 struct SubRule {
 	width: usize,
 	height: usize,
+	/// offset from top-left corner used to find and sample matches fairly, normally only used by rotated/mirrored variants
+	#[serde(default, skip)]
+	origin_x: usize,
+	/// offset from top-left corner used to find and sample matches fairly, normally only used by rotated/mirrored variants
+	#[serde(default, skip)]
+	origin_y: usize,
 	contents: Vec<(RuleCellFrom, RuleCellTo)>,
 }
 
@@ -106,6 +112,8 @@ impl SubRule {
 		Self {
 			width: 1,
 			height: 1,
+			origin_x: 0,
+			origin_y: 0,
 			contents: vec![Default::default()],
 		}
 	}
@@ -236,6 +244,10 @@ impl Rule {
 		self.variants.len()
 	}
 
+	pub fn dbg_variants(&self) {
+		dbg!(&self.variants);
+	}
+
 	pub fn generate_variants(&mut self) {
 		self.variants.clear();
 		self.variants.push(self.base.clone());
@@ -254,6 +266,7 @@ impl Rule {
 		if self.flip_x {
 			transform_variants(&mut self.variants, |base| {
 				let mut new = base.clone();
+				new.origin_x = new.width - new.origin_x - 1;
 				for y in 0..new.height {
 					for x in 0..new.width {
 						let mut cell = base.get(new.width - x - 1, y);
@@ -269,6 +282,7 @@ impl Rule {
 		if self.flip_y {
 			transform_variants(&mut self.variants, |base| {
 				let mut new = base.clone();
+				new.origin_y = new.height - new.origin_y - 1;
 				for y in 0..new.height {
 					for x in 0..new.width {
 						let mut cell = base.get(x, new.height - y - 1);
@@ -285,6 +299,8 @@ impl Rule {
 			// 180° rotations (same as flipping x and y)
 			transform_variants(&mut self.variants, |base| {
 				let mut new = base.clone();
+				new.origin_x = new.width - new.origin_x - 1;
+				new.origin_y = new.height - new.origin_y - 1;
 				for y in 0..new.height {
 					for x in 0..new.width {
 						let mut cell = base.get(new.width - x - 1, new.height - y - 1);
@@ -303,6 +319,8 @@ impl Rule {
 				let mut new = base.clone();
 				new.height = base.width;
 				new.width = base.height;
+				new.origin_x = base.height - base.origin_y - 1;
+				new.origin_y = base.origin_x;
 				for y in 0..new.height {
 					for x in 0..new.width {
 						let mut cell = base.get(y, new.width - x - 1);
@@ -363,6 +381,8 @@ impl Dish {
 				base: SubRule {
 					width: 1,
 					height: 2,
+					origin_x: 0,
+					origin_y: 0,
 					contents: vec![
 						(RuleCellFrom::One(Cell(1)), RuleCellTo::One(Cell(0))),
 						(RuleCellFrom::One(Cell(0)), RuleCellTo::One(Cell(1))),
@@ -376,6 +396,8 @@ impl Dish {
 				base: SubRule {
 					width: 2,
 					height: 2,
+					origin_x: 0,
+					origin_y: 0,
 					contents: vec![
 						(RuleCellFrom::One(Cell(1)), RuleCellTo::One(Cell(0))),
 						(RuleCellFrom::Any, RuleCellTo::None),
@@ -413,6 +435,14 @@ impl Dish {
 		};
 		new.update_all_rules();
 		new
+	}
+
+	pub fn cache_count(&self) -> usize {
+		self.cache.iter().map(|c| c.matches.len()).sum()
+	}
+
+	pub fn dbg_cache(&self) {
+		dbg!(&self.cache);
 	}
 
 	pub fn fill(&mut self, cell: Cell) {
@@ -460,9 +490,14 @@ impl Dish {
 			let border_x = rule.width as isize - 1;
 			let border_y = rule.height as isize - 1;
 
-			for px in -border_x..(CHUNK_SIZE as isize) {
-				for py in -border_y..(CHUNK_SIZE as isize) {
-					if self.world.subrule_matches(px, py, rule, &self.groups) {
+			for px in -border_x..(CHUNK_SIZE as isize + border_x) {
+				for py in -border_y..(CHUNK_SIZE as isize + border_y) {
+					let corner_x = px.wrapping_sub_unsigned(rule.origin_x);
+					let corner_y = py.wrapping_sub_unsigned(rule.origin_y);
+					if self
+						.world
+						.subrule_matches(corner_x, corner_y, rule, &self.groups)
+					{
 						matches.push((px, py));
 					}
 				}
@@ -484,7 +519,7 @@ impl Dish {
 		self.update_match_cache();
 	}
 
-	pub fn update_cache(&mut self, x: isize, y: isize, width: usize, height: usize) {
+	pub fn update_cache(&mut self, cx: isize, cy: isize, width: usize, height: usize) {
 		fn overlap(
 			(x1, y1, w1, h1): (isize, isize, usize, usize),
 			(x2, y2, w2, h2): (isize, isize, usize, usize),
@@ -494,7 +529,7 @@ impl Dish {
 				&& y2 < y1.saturating_add_unsigned(h1)
 				&& y1 < y2.saturating_add_unsigned(h2)
 		}
-		let edited_rect = (x, y, width, height);
+		let edited_rect = (cx, cy, width, height);
 
 		for cache in &mut self.cache {
 			let rule = &self.rules[cache.rule].variants[cache.variant];
@@ -505,7 +540,9 @@ impl Dish {
 			let mut i = 0;
 			while i < cache.matches.len() {
 				let match_pos = cache.matches[i];
-				let match_rect = (match_pos.0, match_pos.1, rule_width, rule_height);
+				let m_corner_x = match_pos.0.wrapping_sub_unsigned(rule.origin_x);
+				let m_corner_y = match_pos.1.wrapping_sub_unsigned(rule.origin_y);
+				let match_rect = (m_corner_x, m_corner_y, rule_width, rule_height);
 				if overlap(edited_rect, match_rect) {
 					cache.matches.swap_remove(i);
 				} else {
@@ -516,9 +553,20 @@ impl Dish {
 			let border_x = rule_width - 1;
 			let border_y = rule_height - 1;
 
-			for px in (x.wrapping_sub_unsigned(border_x))..(x.wrapping_add_unsigned(width)) {
-				for py in (y.wrapping_sub_unsigned(border_y))..(y.wrapping_add_unsigned(height)) {
-					if self.world.subrule_matches(px, py, rule, &self.groups) {
+			let x_min = cx.wrapping_sub_unsigned(border_x);
+			let y_min = cy.wrapping_sub_unsigned(border_y);
+			let x_max = cx
+				.wrapping_add_unsigned(width)
+				.wrapping_add_unsigned(border_x);
+			let y_max = cy
+				.wrapping_add_unsigned(height)
+				.wrapping_add_unsigned(border_y);
+
+			for px in x_min..x_max {
+				for py in y_min..y_max {
+					let cx = px.wrapping_sub_unsigned(rule.origin_x);
+					let cy = py.wrapping_sub_unsigned(rule.origin_y);
+					if self.world.subrule_matches(cx, cy, rule, &self.groups) {
 						cache.matches.push((px, py));
 					}
 				}
@@ -550,52 +598,40 @@ impl Dish {
 		let rule = &self.rules[rule_cache.rule].variants[rule_cache.variant];
 		let width = rule.width;
 		let height = rule.height;
+		let cx = x.wrapping_sub_unsigned(rule.origin_x);
+		let cy = y.wrapping_sub_unsigned(rule.origin_y);
 
 		self.apply_rule(x, y, rule_cache.rule, rule_cache.variant);
-		self.update_cache(x, y, width, height);
+		self.update_cache(cx, cy, width, height);
 	}
 
 	/// Picks a random point and applies a random match at that position, if any exist.
-	/// The random point can be outside the world bounds, to catch cases where the root (top-left) of a match is outside the bounds.
+	/// The random point can be outside the world bounds, to catch cases where the origin of a match is outside the bounds.
 	/// TODO make sure max_rule_[width/height] is up to date after each rule.generate_variants
-	pub fn fire_blindly_cached(&mut self) {
+	pub fn try_one_location(&mut self) {
 		let border_x = self.max_rule_width - 1;
 		let border_y = self.max_rule_height - 1;
-		let x = ((random::<usize>() % (CHUNK_SIZE + border_x)) as isize)
+		let origin_x = ((random::<usize>() % (CHUNK_SIZE + border_x * 2)) as isize)
 			.wrapping_sub_unsigned(border_x);
-		let y = ((random::<usize>() % (CHUNK_SIZE + border_y)) as isize)
+		let origin_y = ((random::<usize>() % (CHUNK_SIZE + border_y * 2)) as isize)
 			.wrapping_sub_unsigned(border_y);
 
-		let matches = self.get_matches_at_point(x, y);
+		let matches = self.get_matches_at_point(origin_x, origin_y);
 		if matches.is_empty() {
 			return;
 		}
 		let i = random::<usize>() % matches.len();
 		let (rule_index, variant_index) = matches[i];
-		self.apply_rule(x, y, rule_index, variant_index);
-		let rule = &self.rules[rule_index].variants[variant_index];
-		let width = rule.width;
-		let height = rule.height;
-		self.update_cache(x, y, width, height);
-	}
-
-	/// Picks a random point and applies a random match that overlaps with it, if any exist.
-	/// TODO benchmark and only keep one of try_one_position_overlapped and fire_blindly_cached
-	pub fn try_one_position_overlapped(&mut self) {
-		let x = (random::<usize>() % CHUNK_SIZE) as isize;
-		let y = (random::<usize>() % CHUNK_SIZE) as isize;
-
-		let matches = self.get_matches_containing_point(x, y);
-		if matches.is_empty() {
-			return;
-		}
-		let i = random::<usize>() % matches.len();
-		let (x, y, rule_index, variant_index) = matches[i];
-		self.apply_rule(x, y, rule_index, variant_index);
-		let rule = &self.rules[rule_index].variants[variant_index];
-		let width = rule.width;
-		let height = rule.height;
-		self.update_cache(x, y, width, height);
+		self.apply_rule(origin_x, origin_y, rule_index, variant_index);
+		let variant = &self.rules[rule_index].variants[variant_index];
+		let width = variant.width;
+		let height = variant.height;
+		self.update_cache(
+			origin_x.wrapping_sub_unsigned(variant.origin_x),
+			origin_y.wrapping_sub_unsigned(variant.origin_y),
+			width,
+			height,
+		);
 	}
 
 	fn get_matches_at_point(&self, x: isize, y: isize) -> Vec<(usize, usize)> {
@@ -607,62 +643,6 @@ impl Dish {
 				})
 			})
 			.collect()
-	}
-
-	fn get_matches_containing_point(
-		&self,
-		x: isize,
-		y: isize,
-	) -> Vec<(isize, isize, usize, usize)> {
-		fn contains((x, y, w, h): (isize, isize, usize, usize), (px, py): (isize, isize)) -> bool {
-			px >= x
-				&& py >= y && px < x.saturating_add_unsigned(w)
-				&& py < y.saturating_add_unsigned(h)
-		}
-		self.cache
-			.iter()
-			.flat_map(|rule| {
-				let variant = &self.rules[rule.rule].variants[rule.variant];
-				let (w, h) = (variant.width, variant.height);
-				rule.matches.iter().filter_map(move |&(mx, my)| {
-					if contains((mx, my, w, h), (x, y)) {
-						Some((mx, my, rule.rule, rule.variant))
-					} else {
-						None
-					}
-				})
-			})
-			.collect()
-	}
-
-	pub fn fire_blindly(&mut self) {
-		if self.rules.is_empty() {
-			return;
-		}
-		let enabled_rules = self
-			.rules
-			.iter()
-			.enumerate()
-			.filter_map(|(i, r)| r.enabled.then_some(i))
-			.collect::<Vec<_>>();
-		if enabled_rules.is_empty() {
-			return;
-		}
-		let enabled_rule_index = random::<usize>() % enabled_rules.len();
-		let rule_index = enabled_rules[enabled_rule_index];
-		let rule = &self.rules[rule_index];
-		let variant_index = random::<usize>() % rule.variants.len();
-		let variant = &rule.variants[variant_index].clone();
-		let border_x = variant.width - 1;
-		let border_y = variant.height - 1;
-		let x = ((random::<usize>() % (CHUNK_SIZE + border_x)) as isize)
-			.wrapping_sub_unsigned(border_x);
-		let y = ((random::<usize>() % (CHUNK_SIZE + border_y)) as isize)
-			.wrapping_sub_unsigned(border_y);
-
-		if self.world.subrule_matches(x, y, variant, &self.groups) {
-			self.apply_rule(x, y, rule_index, variant_index);
-		}
 	}
 
 	fn apply_rule(&mut self, x: isize, y: isize, rule_index: usize, variant_index: usize) {
@@ -680,16 +660,25 @@ impl Dish {
 		let mut old_state = Vec::new();
 		for dy in 0..height {
 			for dx in 0..width {
-				old_state.push(
-					self.get_cell((x as usize).wrapping_add(dx), (y as usize).wrapping_add(dy)),
-				);
+				let x = x
+					.wrapping_add_unsigned(dx)
+					.wrapping_sub_unsigned(variant.origin_x) as usize;
+				let y = y
+					.wrapping_add_unsigned(dy)
+					.wrapping_sub_unsigned(variant.origin_y) as usize;
+				old_state.push(self.get_cell(x, y));
 			}
 		}
 
 		for dx in 0..width {
 			for dy in 0..height {
-				let px = x.wrapping_add_unsigned(dx) as usize;
-				let py = y.wrapping_add_unsigned(dy) as usize;
+				let px = x
+					.wrapping_add_unsigned(dx)
+					.wrapping_sub_unsigned(variant.origin_x) as usize;
+				let py = y
+					.wrapping_add_unsigned(dy)
+					.wrapping_sub_unsigned(variant.origin_y) as usize;
+
 				match variant.get(dx, dy).1 {
 					RuleCellTo::One(rule_cell) => {
 						self.set_cell(px, py, rule_cell);
@@ -749,11 +738,17 @@ impl World {
 		}
 	}
 
-	fn subrule_matches(&self, x: isize, y: isize, subrule: &SubRule, groups: &[CellGroup]) -> bool {
+	fn subrule_matches(
+		&self,
+		corner_x: isize,
+		corner_y: isize,
+		subrule: &SubRule,
+		groups: &[CellGroup],
+	) -> bool {
 		for dx in 0..subrule.width {
 			for dy in 0..subrule.height {
-				let x = x.wrapping_add_unsigned(dx) as usize;
-				let y = y.wrapping_add_unsigned(dy) as usize;
+				let x = corner_x.wrapping_add_unsigned(dx) as usize;
+				let y = corner_y.wrapping_add_unsigned(dy) as usize;
 				let cell = self.get_cell(x, y);
 				match subrule.get(dx, dy).0 {
 					RuleCellFrom::One(rule_cell) => {
