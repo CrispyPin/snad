@@ -45,7 +45,7 @@ pub struct CellData {
 	pub color: [u8; 3],
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct Chunk {
 	pub contents: Box<[[Cell; CHUNK_SIZE]; CHUNK_SIZE]>,
 }
@@ -338,8 +338,8 @@ impl Rule {
 	}
 }
 
-impl Chunk {
-	fn new() -> Self {
+impl Default for Chunk {
+	fn default() -> Self {
 		Self {
 			contents: vec![[Cell(0); CHUNK_SIZE]; CHUNK_SIZE]
 				.into_boxed_slice()
@@ -347,7 +347,9 @@ impl Chunk {
 				.unwrap(),
 		}
 	}
+}
 
+impl Chunk {
 	fn fill(&mut self, cell: Cell) {
 		self.contents.fill([cell; CHUNK_SIZE]);
 	}
@@ -416,7 +418,7 @@ impl Dish {
 
 		let mut new = Self {
 			world: World {
-				chunk: Chunk::new().with_random_ones(),
+				chunk: Chunk::default().with_random_ones(),
 			},
 			rules: default_rules,
 			types: vec![

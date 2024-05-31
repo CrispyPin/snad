@@ -92,8 +92,11 @@ impl eframe::App for UScope {
 			.min_width(100.)
 			.show(ctx, |ui| {
 				ui.heading("Simulation");
-				ui.label("speed");
-				ui.add(Slider::new(&mut self.speed, 0..=500).clamp_to_range(false));
+				ui.add(
+					Slider::new(&mut self.speed, 0..=500)
+						.clamp_to_range(false)
+						.text("speed"),
+				);
 				ui.label(format!("sim time: {sim_time:?}"));
 				let avg_sim_time =
 					self.sim_times.iter().sum::<Duration>() / self.sim_times.len() as u32;
@@ -207,7 +210,9 @@ impl eframe::App for UScope {
 				});
 			});
 		CentralPanel::default().show(ctx, |ui| {
-			let bounds = ui.available_rect_before_wrap();
+			let mut bounds = ui.available_rect_before_wrap();
+			bounds.min = bounds.min.floor();
+			bounds.max = bounds.max.floor();
 			let painter = ui.painter_at(bounds);
 			paint_world(painter, &self.dish, self.show_grid);
 
