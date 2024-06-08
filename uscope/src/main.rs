@@ -372,6 +372,9 @@ fn rule_editor(
 				ui.painter_at(bounds).rect_filled(rect_a, 0., color);
 				ui.painter_at(bounds).rect_filled(rect_b, 0., color);
 
+				if result.clicked() {
+					changed = true;
+				}
 				result.clicked()
 			};
 			if resize_box(
